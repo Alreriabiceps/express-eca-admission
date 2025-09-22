@@ -21,12 +21,17 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
 });
 
-// Upload to Cloudinary helper function
+// Upload to Cloudinary helper function with timeout
 const uploadToCloudinary = (file, folder) => {
   return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Cloudinary upload timeout"));
+    }, 15000); // 15 second timeout
+
     const uploadStream = cloudinary.uploader.upload_stream(
       { folder: `sam/${folder}` },
       (error, result) => {
+        clearTimeout(timeout);
         if (error) reject(error);
         else resolve(result);
       }
@@ -82,17 +87,15 @@ router.post(
 
       await application.save();
 
-      // Send confirmation email
-      try {
-        await sendEmail(email, "submissionConfirmation", [
-          name,
-          application._id,
-        ]);
-        console.log("Confirmation email sent to:", email);
-      } catch (emailError) {
-        console.error("Failed to send confirmation email:", emailError);
-        // Don't fail the request if email fails
-      }
+      // Send confirmation email (non-blocking)
+      sendEmail(email, "submissionConfirmation", [name, application._id])
+        .then(() => {
+          console.log("Confirmation email sent to:", email);
+        })
+        .catch((emailError) => {
+          console.error("Failed to send confirmation email:", emailError);
+          // Don't fail the request if email fails
+        });
 
       res.status(201).json({
         message: "Application submitted successfully",
