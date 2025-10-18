@@ -1,31 +1,49 @@
 const nodemailer = require("nodemailer");
+const EmailQueue = require("./emailQueue");
 
-// Create transporter with better timeout and connection settings for Render
+// Initialize email queue
+const emailQueue = new EmailQueue();
+
+// Create transporter optimized for Render deployment
 const createTransporter = () => {
-  return nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_USER, // Your email
-      pass: process.env.EMAIL_PASS, // Your app password
+  // Try multiple configurations for better Render compatibility
+  const configs = [
+    // Configuration 1: Gmail with minimal settings
+    {
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+      connectionTimeout: 30000, // Reduced timeout
+      greetingTimeout: 15000,
+      socketTimeout: 30000,
+      secure: true,
+      port: 465,
+      tls: {
+        rejectUnauthorized: false,
+      },
     },
-    // Add timeout and connection settings for Render
-    connectionTimeout: 60000, // 60 seconds
-    greetingTimeout: 30000, // 30 seconds
-    socketTimeout: 60000, // 60 seconds
-    pool: true, // Use connection pooling
-    maxConnections: 5,
-    maxMessages: 100,
-    rateLimit: 14, // Limit to 14 emails per second
-    // Additional settings for Render deployment
-    secure: true, // Use SSL
-    port: 465, // Gmail SSL port
-    tls: {
-      rejectUnauthorized: false, // Allow self-signed certificates
+    // Configuration 2: Gmail with different port
+    {
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+      connectionTimeout: 20000,
+      greetingTimeout: 10000,
+      socketTimeout: 20000,
+      tls: {
+        rejectUnauthorized: false,
+      },
     },
-    // Debug mode for production troubleshooting
-    debug: process.env.NODE_ENV === "development",
-    logger: process.env.NODE_ENV === "development",
-  });
+  ];
+
+  // Try the first configuration
+  return nodemailer.createTransport(configs[0]);
 };
 
 // Email templates
@@ -298,12 +316,59 @@ const emailTemplates = {
   }),
 };
 
-// Send email function with retry logic and fallback
+// Send email function with enhanced retry logic and multiple configurations
 const sendEmail = async (to, template, data, retryCount = 0) => {
   try {
-    const transporter = createTransporter();
-    const emailTemplate = emailTemplates[template](...data);
+    // Try different configurations based on retry count
+    let transporter;
+    if (retryCount === 0) {
+      // First attempt: Gmail SSL (port 465)
+      transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+        connectionTimeout: 30000,
+        greetingTimeout: 15000,
+        socketTimeout: 30000,
+        secure: true,
+        port: 465,
+        tls: { rejectUnauthorized: false },
+      });
+    } else if (retryCount === 1) {
+      // Second attempt: Gmail TLS (port 587)
+      transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 587,
+        secure: false,
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+        connectionTimeout: 20000,
+        greetingTimeout: 10000,
+        socketTimeout: 20000,
+        tls: { rejectUnauthorized: false },
+      });
+    } else {
+      // Third attempt: Minimal configuration
+      transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 25,
+        secure: false,
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+        connectionTimeout: 15000,
+        greetingTimeout: 5000,
+        socketTimeout: 15000,
+        ignoreTLS: true,
+      });
+    }
 
+    const emailTemplate = emailTemplates[template](...data);
     const mailOptions = {
       from: `"Exact Colleges of Asia" <${process.env.EMAIL_USER}>`,
       to: to,
@@ -311,29 +376,43 @@ const sendEmail = async (to, template, data, retryCount = 0) => {
       html: emailTemplate.html,
     };
 
+    console.log(
+      `📧 Attempting email send (attempt ${retryCount + 1}) with config ${
+        retryCount + 1
+      }...`
+    );
     const result = await transporter.sendMail(mailOptions);
-    console.log("Email sent successfully:", result.messageId);
+    console.log("✅ Email sent successfully:", result.messageId);
     return { success: true, messageId: result.messageId };
   } catch (error) {
-    console.error("Email sending failed:", error);
+    console.error(`❌ Email attempt ${retryCount + 1} failed:`, error.message);
 
-    // Retry logic for timeout errors
-    if (
-      retryCount < 2 &&
-      (error.code === "ETIMEDOUT" || error.code === "ECONNRESET")
-    ) {
-      console.log(`Retrying email send (attempt ${retryCount + 1})...`);
-      await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 seconds
+    // Retry with different configuration
+    if (retryCount < 2) {
+      console.log(
+        `🔄 Retrying with different configuration (attempt ${
+          retryCount + 2
+        })...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3 seconds
       return sendEmail(to, template, data, retryCount + 1);
     }
 
-    // If all retries fail, log but don't crash the application
-    console.error("Email failed after retries, continuing without email");
-    return { success: false, error: error.message };
+    // If all retries fail, add to queue for later processing
+    console.error("🚨 Email failed after all retries, adding to queue");
+    emailQueue.addToQueue({
+      id: `email-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      to,
+      template,
+      data,
+      error: error.message,
+    });
+    return { success: false, error: error.message, queued: true };
   }
 };
 
 module.exports = {
   sendEmail,
   emailTemplates,
+  emailQueue,
 };
