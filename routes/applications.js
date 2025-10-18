@@ -46,13 +46,30 @@ router.post(
   upload.fields([
     { name: "photo", maxCount: 1 },
     { name: "signature", maxCount: 1 },
+    { name: "examinerSignature", maxCount: 1 },
   ]),
   async (req, res) => {
     try {
       console.log("Request body:", req.body);
       console.log("Request files:", req.files);
 
-      const { name, email, contact, courseApplied } = req.body;
+      const {
+        name,
+        email,
+        contact,
+        courseApplied,
+        lastName,
+        givenName,
+        middleName,
+        schoolLastAttended,
+        presentAddress,
+        dateOfBirth,
+        age,
+        sex,
+        dateSigned,
+        examDateTime,
+        examinerDateSigned,
+      } = req.body;
 
       // Validate required fields
       if (!name || !email || !contact || !courseApplied) {
@@ -69,23 +86,61 @@ router.post(
         });
       }
 
-      // Upload files to Cloudinary
-      const [photoResult, signatureResult] = await Promise.all([
+      // Upload required files to Cloudinary
+      const uploadPromises = [
         uploadToCloudinary(req.files.photo[0], "photos"),
         uploadToCloudinary(req.files.signature[0], "signatures"),
-      ]);
+      ];
 
-      // Create application
-      const application = new Application({
+      // Upload examiner signature if provided (for maritime courses)
+      if (req.files.examinerSignature && req.files.examinerSignature[0]) {
+        uploadPromises.push(
+          uploadToCloudinary(
+            req.files.examinerSignature[0],
+            "examiner-signatures"
+          )
+        );
+      }
+
+      const uploadResults = await Promise.all(uploadPromises);
+      const [photoResult, signatureResult, examinerSignatureResult] =
+        uploadResults;
+
+      // Create application with all fields
+      const applicationData = {
         name,
         email,
         contact,
         courseApplied,
         photoUrl: photoResult.secure_url,
         signatureUrl: signatureResult.secure_url,
-      });
+      };
 
+      // Add optional fields if provided
+      if (lastName) applicationData.lastName = lastName;
+      if (givenName) applicationData.givenName = givenName;
+      if (middleName) applicationData.middleName = middleName;
+      if (schoolLastAttended)
+        applicationData.schoolLastAttended = schoolLastAttended;
+      if (presentAddress) applicationData.presentAddress = presentAddress;
+      if (dateOfBirth) applicationData.dateOfBirth = new Date(dateOfBirth);
+      if (age) applicationData.age = parseInt(age);
+      if (sex) applicationData.sex = sex;
+      if (dateSigned) applicationData.dateSigned = dateSigned;
+
+      // Add examination permit fields if provided (for maritime courses)
+      if (examDateTime) applicationData.examDateTime = new Date(examDateTime);
+      if (examinerDateSigned)
+        applicationData.examinerDateSigned = new Date(examinerDateSigned);
+      if (examinerSignatureResult) {
+        applicationData.examinerSignatureUrl =
+          examinerSignatureResult.secure_url;
+      }
+
+      const application = new Application(applicationData);
       await application.save();
+
+      console.log("Application saved successfully:", application._id);
 
       // Send confirmation email (non-blocking)
       sendEmail(email, "submissionConfirmation", [name, application._id])

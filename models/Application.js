@@ -7,6 +7,19 @@ const applicationSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    // Separated name fields
+    lastName: {
+      type: String,
+      trim: true,
+    },
+    givenName: {
+      type: String,
+      trim: true,
+    },
+    middleName: {
+      type: String,
+      trim: true,
+    },
     email: {
       type: String,
       required: true,
@@ -23,6 +36,28 @@ const applicationSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    // Additional personal information
+    schoolLastAttended: {
+      type: String,
+      trim: true,
+    },
+    presentAddress: {
+      type: String,
+      trim: true,
+    },
+    dateOfBirth: {
+      type: Date,
+    },
+    age: {
+      type: Number,
+    },
+    sex: {
+      type: String,
+      enum: ["Male", "Female"],
+    },
+    dateSigned: {
+      type: String,
+    },
     status: {
       type: String,
       enum: ["pending", "verified", "incomplete", "admitted", "rejected"],
@@ -35,6 +70,16 @@ const applicationSchema = new mongoose.Schema(
     signatureUrl: {
       type: String,
       required: true,
+    },
+    // Examination Permit fields (for maritime courses)
+    examDateTime: {
+      type: Date,
+    },
+    examinerDateSigned: {
+      type: Date,
+    },
+    examinerSignatureUrl: {
+      type: String,
     },
     submittedAt: {
       type: Date,
