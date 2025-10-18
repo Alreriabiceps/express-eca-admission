@@ -298,14 +298,12 @@ const sendEmail = async (to, template, data) => {
 
     // Send email using Resend
     const result = await resend.emails.send({
-      from: "Exact Colleges of Asia <onboarding@resend.dev>",
+      from: "Exact Colleges of Asia <noreply@exactcolleges.edu.ph>",
       to: to,
       subject: emailTemplate.subject,
       html: emailTemplate.html,
     });
 
-    console.log("✅ Email sent successfully via Resend");
-    console.log("📧 Message ID:", result.data?.id || result.id || "N/A");
     console.log("📧 Full Resend Response:", JSON.stringify(result, null, 2));
 
     // Check if there's an error in the response
@@ -317,6 +315,9 @@ const sendEmail = async (to, template, data) => {
         provider: "resend",
       };
     }
+
+    console.log("✅ Email sent successfully via Resend");
+    console.log("📧 Message ID:", result.data?.id || result.id || "N/A");
 
     return {
       success: true,
