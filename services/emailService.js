@@ -282,36 +282,55 @@ const sendEmail = async (to, template, data) => {
       return { success: false, error: "RESEND_API_KEY not configured" };
     }
 
+    // Validate API key format
+    if (!process.env.RESEND_API_KEY.startsWith("re_")) {
+      console.error(
+        "❌ Invalid RESEND_API_KEY format (should start with 're_')"
+      );
+      return { success: false, error: "Invalid RESEND_API_KEY format" };
+    }
+
     // Get email template
     const emailTemplate = emailTemplates[template](...data);
-    
+
     console.log(`📧 Sending email via Resend to: ${to}`);
     console.log(`📧 Subject: ${emailTemplate.subject}`);
 
     // Send email using Resend
     const result = await resend.emails.send({
-      from: "Exact Colleges of Asia <noreply@exactcolleges.edu.ph>",
+      from: "Exact Colleges of Asia <onboarding@resend.dev>",
       to: to,
       subject: emailTemplate.subject,
       html: emailTemplate.html,
     });
 
     console.log("✅ Email sent successfully via Resend");
-    console.log("📧 Message ID:", result.data?.id);
-    
-    return { 
-      success: true, 
-      messageId: result.data?.id,
-      provider: "resend"
+    console.log("📧 Message ID:", result.data?.id || result.id || "N/A");
+    console.log("📧 Full Resend Response:", JSON.stringify(result, null, 2));
+
+    // Check if there's an error in the response
+    if (result.error) {
+      console.error("❌ Resend returned an error:", result.error.message);
+      return {
+        success: false,
+        error: result.error.message,
+        provider: "resend",
+      };
+    }
+
+    return {
+      success: true,
+      messageId: result.data?.id || result.id || "resend-success",
+      provider: "resend",
     };
   } catch (error) {
     console.error("❌ Resend email failed:", error.message);
     console.error("📧 Error details:", error);
-    
-    return { 
-      success: false, 
+
+    return {
+      success: false,
       error: error.message,
-      provider: "resend"
+      provider: "resend",
     };
   }
 };
