@@ -628,4 +628,38 @@ router.get("/stats/overview", authMiddleware, async (req, res) => {
   }
 });
 
+// Test email endpoint (for debugging)
+router.post("/test-email", authMiddleware, async (req, res) => {
+  try {
+    const { email, name = "Test User" } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    console.log("Testing email to:", email);
+
+    // Send test email
+    const result = await sendEmail(email, "submissionConfirmation", [
+      name,
+      "TEST-12345",
+    ]);
+
+    if (result.success) {
+      res.json({
+        message: "Test email sent successfully",
+        messageId: result.messageId,
+      });
+    } else {
+      res.status(500).json({
+        message: "Failed to send test email",
+        error: result.error,
+      });
+    }
+  } catch (error) {
+    console.error("Test email error:", error);
+    res.status(500).json({ message: "Server error during test email" });
+  }
+});
+
 module.exports = router;

@@ -1,6 +1,6 @@
 const nodemailer = require("nodemailer");
 
-// Create transporter (using Gmail as example - you can change this)
+// Create transporter with better timeout and connection settings for Render
 const createTransporter = () => {
   return nodemailer.createTransport({
     service: "gmail",
@@ -8,6 +8,23 @@ const createTransporter = () => {
       user: process.env.EMAIL_USER, // Your email
       pass: process.env.EMAIL_PASS, // Your app password
     },
+    // Add timeout and connection settings for Render
+    connectionTimeout: 60000, // 60 seconds
+    greetingTimeout: 30000, // 30 seconds
+    socketTimeout: 60000, // 60 seconds
+    pool: true, // Use connection pooling
+    maxConnections: 5,
+    maxMessages: 100,
+    rateLimit: 14, // Limit to 14 emails per second
+    // Additional settings for Render deployment
+    secure: true, // Use SSL
+    port: 465, // Gmail SSL port
+    tls: {
+      rejectUnauthorized: false, // Allow self-signed certificates
+    },
+    // Debug mode for production troubleshooting
+    debug: process.env.NODE_ENV === "development",
+    logger: process.env.NODE_ENV === "development",
   });
 };
 
@@ -281,8 +298,8 @@ const emailTemplates = {
   }),
 };
 
-// Send email function
-const sendEmail = async (to, template, data) => {
+// Send email function with retry logic and fallback
+const sendEmail = async (to, template, data, retryCount = 0) => {
   try {
     const transporter = createTransporter();
     const emailTemplate = emailTemplates[template](...data);
@@ -299,6 +316,19 @@ const sendEmail = async (to, template, data) => {
     return { success: true, messageId: result.messageId };
   } catch (error) {
     console.error("Email sending failed:", error);
+
+    // Retry logic for timeout errors
+    if (
+      retryCount < 2 &&
+      (error.code === "ETIMEDOUT" || error.code === "ECONNRESET")
+    ) {
+      console.log(`Retrying email send (attempt ${retryCount + 1})...`);
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 seconds
+      return sendEmail(to, template, data, retryCount + 1);
+    }
+
+    // If all retries fail, log but don't crash the application
+    console.error("Email failed after retries, continuing without email");
     return { success: false, error: error.message };
   }
 };
