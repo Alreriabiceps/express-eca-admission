@@ -142,13 +142,18 @@ router.post(
 
       console.log("Application saved successfully:", application._id);
 
-      // Send confirmation email (non-blocking)
+      // Send confirmation email via Resend (non-blocking)
       sendEmail(email, "submissionConfirmation", [name, application._id])
-        .then(() => {
-          console.log("Confirmation email sent to:", email);
+        .then((result) => {
+          if (result.success) {
+            console.log("✅ Confirmation email sent via Resend to:", email);
+            console.log("📧 Message ID:", result.messageId);
+          } else {
+            console.error("❌ Resend email failed:", result.error);
+          }
         })
         .catch((emailError) => {
-          console.error("Failed to send confirmation email:", emailError);
+          console.error("❌ Failed to send confirmation email:", emailError);
           // Don't fail the request if email fails
         });
 
@@ -637,9 +642,9 @@ router.post("/test-email", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Email is required" });
     }
 
-    console.log("Testing email to:", email);
+    console.log("Testing Resend email to:", email);
 
-    // Send test email
+    // Send test email using Resend
     const result = await sendEmail(email, "submissionConfirmation", [
       name,
       "TEST-12345",
@@ -647,13 +652,15 @@ router.post("/test-email", authMiddleware, async (req, res) => {
 
     if (result.success) {
       res.json({
-        message: "Test email sent successfully",
+        message: "Test email sent successfully via Resend",
         messageId: result.messageId,
+        provider: result.provider,
       });
     } else {
       res.status(500).json({
-        message: "Failed to send test email",
+        message: "Failed to send test email via Resend",
         error: result.error,
+        provider: result.provider,
       });
     }
   } catch (error) {

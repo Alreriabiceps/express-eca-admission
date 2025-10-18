@@ -1,52 +1,9 @@
-const nodemailer = require("nodemailer");
-const EmailQueue = require("./emailQueue");
+const { Resend } = require("resend");
 
-// Initialize email queue
-const emailQueue = new EmailQueue();
+// Initialize Resend
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Create transporter optimized for Render deployment
-const createTransporter = () => {
-  // Try multiple configurations for better Render compatibility
-  const configs = [
-    // Configuration 1: Gmail with minimal settings
-    {
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      connectionTimeout: 30000, // Reduced timeout
-      greetingTimeout: 15000,
-      socketTimeout: 30000,
-      secure: true,
-      port: 465,
-      tls: {
-        rejectUnauthorized: false,
-      },
-    },
-    // Configuration 2: Gmail with different port
-    {
-      host: "smtp.gmail.com",
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      connectionTimeout: 20000,
-      greetingTimeout: 10000,
-      socketTimeout: 20000,
-      tls: {
-        rejectUnauthorized: false,
-      },
-    },
-  ];
-
-  // Try the first configuration
-  return nodemailer.createTransport(configs[0]);
-};
-
-// Email templates
+// Email templates (keeping all existing templates intact)
 const emailTemplates = {
   submissionConfirmation: (studentName, applicationId) => ({
     subject: "Application Submitted Successfully - Exact Colleges of Asia",
@@ -103,7 +60,7 @@ const emailTemplates = {
           </p>
           
           <div style="text-align: center; margin-top: 30px;">
-            <a href="http://localhost:5173" style="background: #1B9AAA; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Visit Our Website</a>
+            <a href="https://your-frontend-domain.com" style="background: #1B9AAA; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Visit Our Website</a>
           </div>
         </div>
         
@@ -162,7 +119,7 @@ const emailTemplates = {
           </p>
           
           <div style="text-align: center; margin-top: 30px;">
-            <a href="http://localhost:5173/application" style="background: #E63946; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Submit Missing Requirements</a>
+            <a href="https://your-frontend-domain.com/application" style="background: #E63946; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Submit Missing Requirements</a>
           </div>
         </div>
         
@@ -204,7 +161,7 @@ const emailTemplates = {
           </p>
           
           <div style="text-align: center; margin-top: 30px;">
-            <a href="http://localhost:5173" style="background: #1B9AAA; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Visit Our Website</a>
+            <a href="https://your-frontend-domain.com" style="background: #1B9AAA; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Visit Our Website</a>
           </div>
         </div>
         
@@ -299,7 +256,7 @@ const emailTemplates = {
           </p>
           
           <div style="text-align: center; margin-top: 30px;">
-            <a href="http://localhost:5173" style="background: ${
+            <a href="https://your-frontend-domain.com" style="background: ${
               status === "admitted" ? "#22c55e" : "#1B9AAA"
             }; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
               ${status === "admitted" ? "View Next Steps" : "Visit Our Website"}
@@ -316,103 +273,50 @@ const emailTemplates = {
   }),
 };
 
-// Send email function with enhanced retry logic and multiple configurations
-const sendEmail = async (to, template, data, retryCount = 0) => {
+// Send email function using Resend API
+const sendEmail = async (to, template, data) => {
   try {
-    // Try different configurations based on retry count
-    let transporter;
-    if (retryCount === 0) {
-      // First attempt: Gmail SSL (port 465)
-      transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-        connectionTimeout: 30000,
-        greetingTimeout: 15000,
-        socketTimeout: 30000,
-        secure: true,
-        port: 465,
-        tls: { rejectUnauthorized: false },
-      });
-    } else if (retryCount === 1) {
-      // Second attempt: Gmail TLS (port 587)
-      transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 587,
-        secure: false,
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-        connectionTimeout: 20000,
-        greetingTimeout: 10000,
-        socketTimeout: 20000,
-        tls: { rejectUnauthorized: false },
-      });
-    } else {
-      // Third attempt: Minimal configuration
-      transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 25,
-        secure: false,
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-        connectionTimeout: 15000,
-        greetingTimeout: 5000,
-        socketTimeout: 15000,
-        ignoreTLS: true,
-      });
+    // Check if Resend API key is configured
+    if (!process.env.RESEND_API_KEY) {
+      console.error("❌ RESEND_API_KEY not configured");
+      return { success: false, error: "RESEND_API_KEY not configured" };
     }
 
+    // Get email template
     const emailTemplate = emailTemplates[template](...data);
-    const mailOptions = {
-      from: `"Exact Colleges of Asia" <${process.env.EMAIL_USER}>`,
+    
+    console.log(`📧 Sending email via Resend to: ${to}`);
+    console.log(`📧 Subject: ${emailTemplate.subject}`);
+
+    // Send email using Resend
+    const result = await resend.emails.send({
+      from: "Exact Colleges of Asia <noreply@exactcolleges.edu.ph>",
       to: to,
       subject: emailTemplate.subject,
       html: emailTemplate.html,
-    };
-
-    console.log(
-      `📧 Attempting email send (attempt ${retryCount + 1}) with config ${
-        retryCount + 1
-      }...`
-    );
-    const result = await transporter.sendMail(mailOptions);
-    console.log("✅ Email sent successfully:", result.messageId);
-    return { success: true, messageId: result.messageId };
-  } catch (error) {
-    console.error(`❌ Email attempt ${retryCount + 1} failed:`, error.message);
-
-    // Retry with different configuration
-    if (retryCount < 2) {
-      console.log(
-        `🔄 Retrying with different configuration (attempt ${
-          retryCount + 2
-        })...`
-      );
-      await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3 seconds
-      return sendEmail(to, template, data, retryCount + 1);
-    }
-
-    // If all retries fail, add to queue for later processing
-    console.error("🚨 Email failed after all retries, adding to queue");
-    emailQueue.addToQueue({
-      id: `email-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      to,
-      template,
-      data,
-      error: error.message,
     });
-    return { success: false, error: error.message, queued: true };
+
+    console.log("✅ Email sent successfully via Resend");
+    console.log("📧 Message ID:", result.data?.id);
+    
+    return { 
+      success: true, 
+      messageId: result.data?.id,
+      provider: "resend"
+    };
+  } catch (error) {
+    console.error("❌ Resend email failed:", error.message);
+    console.error("📧 Error details:", error);
+    
+    return { 
+      success: false, 
+      error: error.message,
+      provider: "resend"
+    };
   }
 };
 
 module.exports = {
   sendEmail,
   emailTemplates,
-  emailQueue,
 };
