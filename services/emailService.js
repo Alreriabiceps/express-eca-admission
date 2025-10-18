@@ -298,7 +298,7 @@ const sendEmail = async (to, template, data) => {
 
     // Send email using Resend
     const result = await resend.emails.send({
-      from: "Exact Colleges of Asia <noreply@exactcolleges.edu.ph>",
+      from: "Exact Colleges of Asia <onboarding@resend.dev>",
       to: to,
       subject: emailTemplate.subject,
       html: emailTemplate.html,
