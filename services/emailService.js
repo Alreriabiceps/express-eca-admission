@@ -1,7 +1,38 @@
-const { Resend } = require("resend");
+const nodemailer = require("nodemailer");
 
-// Initialize Resend
-const resend = new Resend(process.env.RESEND_API_KEY);
+const {
+  EMAIL_SERVICE,
+  EMAIL_HOST,
+  EMAIL_PORT,
+  EMAIL_SECURE,
+  EMAIL_USER,
+  EMAIL_PASS,
+  EMAIL_FROM,
+} = process.env;
+
+const transporterOptions = {};
+
+if (EMAIL_SERVICE) {
+  transporterOptions.service = EMAIL_SERVICE;
+}
+
+if (!EMAIL_SERVICE) {
+  transporterOptions.host = EMAIL_HOST || "smtp.gmail.com";
+  transporterOptions.port = EMAIL_PORT ? parseInt(EMAIL_PORT, 10) : 465;
+  transporterOptions.secure =
+    EMAIL_SECURE !== undefined
+      ? EMAIL_SECURE === "true"
+      : transporterOptions.port === 465;
+}
+
+if (EMAIL_USER && EMAIL_PASS) {
+  transporterOptions.auth = {
+    user: EMAIL_USER,
+    pass: EMAIL_PASS,
+  };
+}
+
+const transporter = nodemailer.createTransport(transporterOptions);
 
 // Email templates (keeping all existing templates intact)
 const emailTemplates = {
@@ -271,67 +302,148 @@ const emailTemplates = {
       </div>
     `,
   }),
+  adminPasswordReset: (adminEmail, resetLink) => ({
+    subject: "Admin Password Reset Request - Exact Colleges of Asia",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #0D1B2A, #1B9AAA); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 28px;">Exact Colleges of Asia</h1>
+          <p style="margin: 10px 0 0 0; opacity: 0.9;">Admin Password Reset</p>
+        </div>
+
+        <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px;">
+          <p style="color: #343A40; font-size: 16px; line-height: 1.6;">
+            Hello <strong>${adminEmail}</strong>,
+          </p>
+
+          <p style="color: #343A40; font-size: 16px; line-height: 1.6;">
+            We received a request to reset your admin account password for the Student Admission Management System.
+          </p>
+
+          <div style="text-align: center; margin: 25px 0;">
+            <a href="${resetLink}" style="background: #1B9AAA; color: white; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-weight: bold;">Reset Password</a>
+          </div>
+
+          <p style="color: #343A40; font-size: 14px; line-height: 1.6;">
+            If you did not request this change, you can safely ignore this email. The link will expire in 15 minutes.
+          </p>
+
+          <p style="color: #343A40; font-size: 14px; line-height: 1.6;">
+            For security reasons, please do not share this link with anyone.
+          </p>
+        </div>
+
+        <div style="text-align: center; margin-top: 20px; color: #6c757d; font-size: 14px;">
+          <p>© 2024 Exact Colleges of Asia. All rights reserved.</p>
+          <p>Suclayin, Arayat, Pampanga, Philippines</p>
+        </div>
+      </div>
+    `,
+  }),
+  applicationVerified: (studentName, course) => ({
+    subject: "Letter of Acceptance - Exact Colleges of Asia",
+    html: `
+      <div style="font-family: 'Arial', sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff; border: 1px solid #d1d5db;">
+        <div style="background: #1B4ED8; color: white; padding: 24px; text-align: center; position: relative;">
+          <div style="font-size: 26px; font-weight: bold; letter-spacing: 1px;">EXACT COLLEGES OF ASIA</div>
+          <div style="font-size: 13px; margin-top: 6px;">
+            Suclayin, Arayat, Pampanga<br/>
+            Cel No. 0925-870-1013 • 0917-324-7803<br/>
+            Email: exact.colleges@yahoo.com
+          </div>
+        </div>
+
+        <div style="padding: 32px;">
+          <p style="font-size: 13px; color: #111827; letter-spacing: 1px; margin-bottom: 6px;">LETTER OF ACCEPTANCE</p>
+          <p style="font-size: 14px; color: #374151; margin-bottom: 24px;">Dear <strong>${studentName}</strong>,</p>
+
+          <p style="font-size: 15px; color: #111827; line-height: 1.7; margin-bottom: 20px;">
+            Greetings from Exact Colleges of Asia! It is with great pleasure to inform you of your <strong>ACCEPTANCE</strong> in the
+            <strong>${course}</strong> program for the First Semester, Academic Year 2025-2026 at the Exact Colleges of Asia.
+          </p>
+
+          <p style="font-size: 15px; color: #111827; font-weight: 600; margin-bottom: 12px;">
+            To proceed with your enrollment, kindly prepare the following documents:
+          </p>
+
+          <ul style="list-style: none; padding-left: 0; margin: 0 0 18px 0; font-size: 14px; color: #111827; line-height: 1.6;">
+            <li>☐ 2x2 recent photo, white background with name tag (4pcs)</li>
+            <li>☐ Certificate of Good Moral Character</li>
+            <li>☐ Certificate of Barangay Residency with original Barangay Seal</li>
+            <li>☐ Photocopy of PSA Birth Certificate</li>
+          </ul>
+
+          <ul style="list-style: none; padding-left: 0; margin: 0 0 18px 0; font-size: 14px; color: #111827; line-height: 1.6;">
+            <li>☐ Original Copy of Form 138</li>
+            <li>☐ Original Copy of Form 137</li>
+            <li>☐ Photocopy of Moving Up Certificate</li>
+          </ul>
+
+          <p style="font-size: 13px; color: #6B7280; font-style: italic; margin-bottom: 22px;">
+            Note: You may submit the last three requirements once available.
+          </p>
+
+          <p style="font-size: 15px; color: #111827; line-height: 1.6; margin-bottom: 18px;">
+            To reserve a slot, please submit the aforementioned requirements in a <strong>LONG BROWN ENVELOPE</strong> at the Registrar’s Office
+            and pay the <strong>RESERVATION FEE</strong> at the Accounting Office.
+          </p>
+
+          <p style="font-size: 15px; color: #111827; line-height: 1.6; margin-bottom: 24px;">
+            Again, congratulations and welcome to the Exaction Family!
+          </p>
+
+          <p style="font-size: 15px; color: #111827; font-weight: 600;">
+            - Dr. Ferdinand G. Marcos (Sgd)<br/>
+            School President
+          </p>
+        </div>
+      </div>
+    `,
+  }),
 };
 
-// Send email function using Resend API
+// Send email function using SMTP
 const sendEmail = async (to, template, data) => {
   try {
-    // Check if Resend API key is configured
-    if (!process.env.RESEND_API_KEY) {
-      console.error("❌ RESEND_API_KEY not configured");
-      return { success: false, error: "RESEND_API_KEY not configured" };
-    }
-
-    // Validate API key format
-    if (!process.env.RESEND_API_KEY.startsWith("re_")) {
-      console.error(
-        "❌ Invalid RESEND_API_KEY format (should start with 're_')"
-      );
-      return { success: false, error: "Invalid RESEND_API_KEY format" };
+    if (!EMAIL_USER || !EMAIL_PASS) {
+      console.error("❌ EMAIL_USER or EMAIL_PASS not configured in .env");
+      return {
+        success: false,
+        error: "Email credentials not configured",
+        provider: "smtp",
+      };
     }
 
     // Get email template
     const emailTemplate = emailTemplates[template](...data);
 
-    console.log(`📧 Sending email via Resend to: ${to}`);
+    console.log(`📧 Sending email via SMTP to: ${to}`);
     console.log(`📧 Subject: ${emailTemplate.subject}`);
 
-    // Send email using Resend
-    const result = await resend.emails.send({
-      from: "Exact Colleges of Asia <onboarding@resend.dev>",
-      to: to,
+    const result = await transporter.sendMail({
+      from: EMAIL_FROM || EMAIL_USER,
+      to,
       subject: emailTemplate.subject,
       html: emailTemplate.html,
     });
 
-    console.log("📧 Full Resend Response:", JSON.stringify(result, null, 2));
-
-    // Check if there's an error in the response
-    if (result.error) {
-      console.error("❌ Resend returned an error:", result.error.message);
-      return {
-        success: false,
-        error: result.error.message,
-        provider: "resend",
-      };
-    }
-
-    console.log("✅ Email sent successfully via Resend");
-    console.log("📧 Message ID:", result.data?.id || result.id || "N/A");
+    console.log("📧 SMTP Response:", JSON.stringify(result, null, 2));
+    console.log("✅ Email sent successfully via SMTP");
+    console.log("📧 Message ID:", result.messageId || "N/A");
 
     return {
       success: true,
-      messageId: result.data?.id || result.id || "resend-success",
-      provider: "resend",
+      messageId: result.messageId || "smtp-success",
+      provider: "smtp",
     };
   } catch (error) {
-    console.error("❌ Resend email failed:", error.message);
+    console.error("❌ SMTP email failed:", error.message);
     console.error("📧 Error details:", error);
 
     return {
       success: false,
       error: error.message,
-      provider: "resend",
+      provider: "smtp",
     };
   }
 };

@@ -41,6 +41,7 @@ router.get("/enrollment", authMiddleware, async (req, res) => {
     const applications = await Application.find({
       ...dateFilter,
       archived: { $ne: true },
+      status: "enrolled",
     });
 
     // Get course targets from database
@@ -151,17 +152,20 @@ router.get("/comparison", authMiddleware, async (req, res) => {
           $lte: endDate,
         },
         archived: { $ne: true },
+        status: "enrolled",
       });
 
       const enrollment = applications.length;
       const previousYearData = yearlyData[yearlyData.length - 1];
-      const growth = previousYearData
-        ? Math.round(
-            ((enrollment - previousYearData.enrollment) /
-              previousYearData.enrollment) *
-              100
-          )
-        : 0;
+      const previousEnrollment = previousYearData
+        ? previousYearData.enrollment
+        : null;
+      const growth =
+        previousEnrollment && previousEnrollment > 0
+          ? Math.round(
+              ((enrollment - previousEnrollment) / previousEnrollment) * 100
+            )
+          : 0;
 
       yearlyData.push({
         year,
@@ -180,6 +184,7 @@ router.get("/comparison", authMiddleware, async (req, res) => {
         $lte: currentYearEnd,
       },
       archived: { $ne: true },
+      status: "enrolled",
     });
 
     // Group by course and calculate growth
@@ -201,6 +206,7 @@ router.get("/comparison", authMiddleware, async (req, res) => {
         $lte: previousYearEnd,
       },
       archived: { $ne: true },
+      status: "enrolled",
     });
 
     previousYearApplications.forEach((app) => {
@@ -219,7 +225,7 @@ router.get("/comparison", authMiddleware, async (req, res) => {
             ? Math.round(
                 ((stats.current - stats.previous) / stats.previous) * 100
               )
-            : 100,
+            : 0,
       }))
       .sort((a, b) => b.enrollment - a.enrollment)
       .slice(0, 5);
@@ -252,6 +258,7 @@ router.get("/course/:courseName", authMiddleware, async (req, res) => {
         $lte: endDate,
       },
       archived: { $ne: true },
+      status: "enrolled",
     });
 
     // Group by status

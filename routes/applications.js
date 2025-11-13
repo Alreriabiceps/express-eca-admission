@@ -336,6 +336,12 @@ router.patch("/:id/status", authMiddleware, async (req, res) => {
           missingItems,
         ]);
         console.log("Missing requirements email sent to:", application.email);
+      } else if (status === "verified") {
+        await sendEmail(application.email, "applicationVerified", [
+          application.name,
+          application.courseApplied,
+        ]);
+        console.log("Application verified email sent to:", application.email);
       } else if (status === "admitted" || status === "rejected") {
         // Send admission result email
         await sendEmail(application.email, "admissionResult", [
