@@ -60,7 +60,7 @@ const applicationSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "verified", "incomplete", "admitted", "rejected"],
+      enum: ["pending", "verified", "incomplete", "admitted", "rejected", "enrolled"],
       default: "pending",
     },
     photoUrl: {

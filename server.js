@@ -20,6 +20,7 @@ app.use("/api/auth", require("./routes/auth"));
 app.use("/api/backup", require("./routes/backup"));
 app.use("/api/export", require("./routes/export"));
 app.use("/api/analytics", require("./routes/analytics"));
+app.use("/api/enrollment-import", require("./routes/enrollmentImport"));
 app.use("/api/course-targets", require("./routes/courseTargets"));
 
 // Health check endpoint

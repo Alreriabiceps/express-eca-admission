@@ -5,37 +5,41 @@ const authMiddleware = require("../middleware/auth");
 
 const router = express.Router();
 
+// Helper to build enrollment date range by academic year and term
+const buildEnrollmentDateFilter = (year, term) => {
+  const startDate = new Date(year, 0, 1); // January 1st of the year
+  const endDate = new Date(year, 11, 31); // December 31st of the year
+
+  let submittedAt = {
+    $gte: startDate,
+    $lte: endDate,
+  };
+
+  if (term && term !== "all") {
+    const termMonths = {
+      "1st": { start: 0, end: 3 }, // Jan-Mar
+      "2nd": { start: 4, end: 7 }, // May-Aug
+      summer: { start: 8, end: 11 }, // Sep-Dec
+    };
+
+    if (termMonths[term]) {
+      submittedAt = {
+        $gte: new Date(year, termMonths[term].start, 1),
+        $lte: new Date(year, termMonths[term].end, 31),
+      };
+    }
+  }
+
+  return { submittedAt };
+};
+
 // Get enrollment analytics data
 router.get("/enrollment", authMiddleware, async (req, res) => {
   try {
     const { year, term } = req.query;
 
     // Build date filter based on year and term
-    const startDate = new Date(year, 0, 1); // January 1st of the year
-    const endDate = new Date(year, 11, 31); // December 31st of the year
-
-    let dateFilter = {
-      submittedAt: {
-        $gte: startDate,
-        $lte: endDate,
-      },
-    };
-
-    // If specific term is selected, adjust date range
-    if (term && term !== "all") {
-      const termMonths = {
-        "1st": { start: 0, end: 3 }, // Jan-Mar
-        "2nd": { start: 4, end: 7 }, // May-Aug
-        summer: { start: 8, end: 11 }, // Sep-Dec
-      };
-
-      if (termMonths[term]) {
-        dateFilter.submittedAt = {
-          $gte: new Date(year, termMonths[term].start, 1),
-          $lte: new Date(year, termMonths[term].end, 31),
-        };
-      }
-    }
+    const dateFilter = buildEnrollmentDateFilter(year, term);
 
     // Get all applications for the period
     const applications = await Application.find({
@@ -130,6 +134,52 @@ router.get("/enrollment", authMiddleware, async (req, res) => {
     res
       .status(500)
       .json({ message: "Server error while fetching analytics data" });
+  }
+});
+
+// Get detailed list of enrolled students (came from admissions)
+router.get("/enrolled-students", authMiddleware, async (req, res) => {
+  try {
+    const { year, term } = req.query;
+
+    const dateFilter = buildEnrollmentDateFilter(year, term);
+
+    const applications = await Application.find({
+      ...dateFilter,
+      archived: { $ne: true },
+      status: "enrolled",
+    })
+      .select(
+        "givenName middleName lastName email contact courseApplied dateOfBirth submittedAt"
+      )
+      .sort({ courseApplied: 1, lastName: 1, givenName: 1 });
+
+    const students = applications.map((app) => ({
+      id: app._id,
+      fullName: [
+        app.lastName || "",
+        ", ",
+        app.givenName || "",
+        app.middleName ? ` ${app.middleName}` : "",
+      ]
+        .join("")
+        .trim(),
+      givenName: app.givenName,
+      middleName: app.middleName,
+      lastName: app.lastName,
+      email: app.email,
+      contact: app.contact,
+      courseApplied: app.courseApplied,
+      dateOfBirth: app.dateOfBirth,
+      submittedAt: app.submittedAt,
+    }));
+
+    res.json({ students });
+  } catch (error) {
+    console.error("Analytics enrolled students error:", error);
+    res.status(500).json({
+      message: "Server error while fetching enrolled students list",
+    });
   }
 });
 
