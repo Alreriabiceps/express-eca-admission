@@ -190,22 +190,29 @@ router.get("/comparison", authMiddleware, async (req, res) => {
     const currentYear = parseInt(year);
     const years = [currentYear - 2, currentYear - 1, currentYear];
 
-    // Get enrollment data for each year
+    // Get admission & enrollment data for each year
     const yearlyData = [];
     for (const year of years) {
       const startDate = new Date(year, 0, 1);
       const endDate = new Date(year, 11, 31);
 
-      const applications = await Application.find({
+      // All applications for the year (admissions funnel)
+      const applicationsAll = await Application.find({
         submittedAt: {
           $gte: startDate,
           $lte: endDate,
         },
         archived: { $ne: true },
-        status: "enrolled",
       });
 
-      const enrollment = applications.length;
+      const totalApplications = applicationsAll.length;
+      const admissions = applicationsAll.filter(
+        (app) => app.status === "admitted"
+      ).length;
+      const enrolled = applicationsAll.filter(
+        (app) => app.status === "enrolled"
+      ).length;
+
       const previousYearData = yearlyData[yearlyData.length - 1];
       const previousEnrollment = previousYearData
         ? previousYearData.enrollment
@@ -213,13 +220,21 @@ router.get("/comparison", authMiddleware, async (req, res) => {
       const growth =
         previousEnrollment && previousEnrollment > 0
           ? Math.round(
-              ((enrollment - previousEnrollment) / previousEnrollment) * 100
+              ((enrolled - previousEnrollment) / previousEnrollment) * 100
             )
           : 0;
 
       yearlyData.push({
         year,
-        enrollment,
+        applications: totalApplications,
+        admissions,
+        enrollment: enrolled,
+        enrollmentRate:
+          totalApplications > 0
+            ? Math.round((enrolled / totalApplications) * 100)
+            : 0,
+        admissionToEnrollmentRate:
+          admissions > 0 ? Math.round((enrolled / admissions) * 100) : 0,
         growth,
       });
     }
@@ -265,24 +280,29 @@ router.get("/comparison", authMiddleware, async (req, res) => {
       }
     });
 
-    // Calculate growth and sort
-    const topCourses = Object.entries(courseStats)
+    // Calculate growth for all courses
+    const allCourses = Object.entries(courseStats)
       .map(([name, stats]) => ({
         name,
         enrollment: stats.current,
+        previousEnrollment: stats.previous,
         growth:
           stats.previous > 0
             ? Math.round(
                 ((stats.current - stats.previous) / stats.previous) * 100
               )
-            : 0,
+            : stats.current > 0 ? 100 : 0,
+        change: stats.current - stats.previous,
       }))
-      .sort((a, b) => b.enrollment - a.enrollment)
-      .slice(0, 5);
+      .sort((a, b) => b.enrollment - a.enrollment);
+
+    // Top 5 for backward compatibility
+    const topCourses = allCourses.slice(0, 5);
 
     res.json({
       yearlyData,
       topCourses,
+      allCourses,
     });
   } catch (error) {
     console.error("Analytics comparison error:", error);
