@@ -5,41 +5,37 @@ const authMiddleware = require("../middleware/auth");
 
 const router = express.Router();
 
-// Helper to build enrollment date range by academic year and term
-const buildEnrollmentDateFilter = (year, term) => {
-  const startDate = new Date(year, 0, 1); // January 1st of the year
-  const endDate = new Date(year, 11, 31); // December 31st of the year
-
-  let submittedAt = {
-    $gte: startDate,
-    $lte: endDate,
-  };
-
-  if (term && term !== "all") {
-    const termMonths = {
-      "1st": { start: 0, end: 3 }, // Jan-Mar
-      "2nd": { start: 4, end: 7 }, // May-Aug
-      summer: { start: 8, end: 11 }, // Sep-Dec
-    };
-
-    if (termMonths[term]) {
-      submittedAt = {
-        $gte: new Date(year, termMonths[term].start, 1),
-        $lte: new Date(year, termMonths[term].end, 31),
-      };
-    }
-  }
-
-  return { submittedAt };
-};
-
 // Get enrollment analytics data
 router.get("/enrollment", authMiddleware, async (req, res) => {
   try {
     const { year, term } = req.query;
 
     // Build date filter based on year and term
-    const dateFilter = buildEnrollmentDateFilter(year, term);
+    const startDate = new Date(year, 0, 1); // January 1st of the year
+    const endDate = new Date(year, 11, 31); // December 31st of the year
+
+    let dateFilter = {
+      submittedAt: {
+        $gte: startDate,
+        $lte: endDate,
+      },
+    };
+
+    // If specific term is selected, adjust date range
+    if (term && term !== "all") {
+      const termMonths = {
+        "1st": { start: 0, end: 3 }, // Jan-Mar
+        "2nd": { start: 4, end: 7 }, // May-Aug
+        summer: { start: 8, end: 11 }, // Sep-Dec
+      };
+
+      if (termMonths[term]) {
+        dateFilter.submittedAt = {
+          $gte: new Date(year, termMonths[term].start, 1),
+          $lte: new Date(year, termMonths[term].end, 31),
+        };
+      }
+    }
 
     // Get all applications for the period
     const applications = await Application.find({
@@ -137,52 +133,6 @@ router.get("/enrollment", authMiddleware, async (req, res) => {
   }
 });
 
-// Get detailed list of enrolled students (came from admissions)
-router.get("/enrolled-students", authMiddleware, async (req, res) => {
-  try {
-    const { year, term } = req.query;
-
-    const dateFilter = buildEnrollmentDateFilter(year, term);
-
-    const applications = await Application.find({
-      ...dateFilter,
-      archived: { $ne: true },
-      status: "enrolled",
-    })
-      .select(
-        "givenName middleName lastName email contact courseApplied dateOfBirth submittedAt"
-      )
-      .sort({ courseApplied: 1, lastName: 1, givenName: 1 });
-
-    const students = applications.map((app) => ({
-      id: app._id,
-      fullName: [
-        app.lastName || "",
-        ", ",
-        app.givenName || "",
-        app.middleName ? ` ${app.middleName}` : "",
-      ]
-        .join("")
-        .trim(),
-      givenName: app.givenName,
-      middleName: app.middleName,
-      lastName: app.lastName,
-      email: app.email,
-      contact: app.contact,
-      courseApplied: app.courseApplied,
-      dateOfBirth: app.dateOfBirth,
-      submittedAt: app.submittedAt,
-    }));
-
-    res.json({ students });
-  } catch (error) {
-    console.error("Analytics enrolled students error:", error);
-    res.status(500).json({
-      message: "Server error while fetching enrolled students list",
-    });
-  }
-});
-
 // Get year-to-year comparison data
 router.get("/comparison", authMiddleware, async (req, res) => {
   try {
@@ -190,29 +140,22 @@ router.get("/comparison", authMiddleware, async (req, res) => {
     const currentYear = parseInt(year);
     const years = [currentYear - 2, currentYear - 1, currentYear];
 
-    // Get admission & enrollment data for each year
+    // Get enrollment data for each year
     const yearlyData = [];
     for (const year of years) {
       const startDate = new Date(year, 0, 1);
       const endDate = new Date(year, 11, 31);
 
-      // All applications for the year (admissions funnel)
-      const applicationsAll = await Application.find({
+      const applications = await Application.find({
         submittedAt: {
           $gte: startDate,
           $lte: endDate,
         },
         archived: { $ne: true },
+        status: "enrolled",
       });
 
-      const totalApplications = applicationsAll.length;
-      const admissions = applicationsAll.filter(
-        (app) => app.status === "admitted"
-      ).length;
-      const enrolled = applicationsAll.filter(
-        (app) => app.status === "enrolled"
-      ).length;
-
+      const enrollment = applications.length;
       const previousYearData = yearlyData[yearlyData.length - 1];
       const previousEnrollment = previousYearData
         ? previousYearData.enrollment
@@ -220,21 +163,13 @@ router.get("/comparison", authMiddleware, async (req, res) => {
       const growth =
         previousEnrollment && previousEnrollment > 0
           ? Math.round(
-              ((enrolled - previousEnrollment) / previousEnrollment) * 100
+              ((enrollment - previousEnrollment) / previousEnrollment) * 100
             )
           : 0;
 
       yearlyData.push({
         year,
-        applications: totalApplications,
-        admissions,
-        enrollment: enrolled,
-        enrollmentRate:
-          totalApplications > 0
-            ? Math.round((enrolled / totalApplications) * 100)
-            : 0,
-        admissionToEnrollmentRate:
-          admissions > 0 ? Math.round((enrolled / admissions) * 100) : 0,
+        enrollment,
         growth,
       });
     }
@@ -280,29 +215,24 @@ router.get("/comparison", authMiddleware, async (req, res) => {
       }
     });
 
-    // Calculate growth for all courses
-    const allCourses = Object.entries(courseStats)
+    // Calculate growth and sort
+    const topCourses = Object.entries(courseStats)
       .map(([name, stats]) => ({
         name,
         enrollment: stats.current,
-        previousEnrollment: stats.previous,
         growth:
           stats.previous > 0
             ? Math.round(
                 ((stats.current - stats.previous) / stats.previous) * 100
               )
-            : stats.current > 0 ? 100 : 0,
-        change: stats.current - stats.previous,
+            : 0,
       }))
-      .sort((a, b) => b.enrollment - a.enrollment);
-
-    // Top 5 for backward compatibility
-    const topCourses = allCourses.slice(0, 5);
+      .sort((a, b) => b.enrollment - a.enrollment)
+      .slice(0, 5);
 
     res.json({
       yearlyData,
       topCourses,
-      allCourses,
     });
   } catch (error) {
     console.error("Analytics comparison error:", error);
