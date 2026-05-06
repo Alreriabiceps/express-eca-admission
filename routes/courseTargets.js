@@ -10,10 +10,12 @@ router.get("/", authMiddleware, async (req, res) => {
     const { year, term } = req.query;
     const currentYear = year || new Date().getFullYear().toString();
     
-    let query = { academicYear: currentYear, isActive: true };
-    if (term && term !== "all") {
-      query.term = term;
-    }
+    const currentTerm = term || "all";
+    const query = {
+      academicYear: currentYear,
+      isActive: true,
+      term: currentTerm,
+    };
 
     const targets = await CourseTarget.find(query).sort({ courseName: 1 });
     res.json(targets);

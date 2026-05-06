@@ -3,8 +3,7 @@ const mongoose = require("mongoose");
 const courseTargetSchema = new mongoose.Schema({
   courseName: {
     type: String,
-    required: true,
-    unique: true
+    required: true
   },
   target: {
     type: Number,
@@ -38,6 +37,9 @@ const courseTargetSchema = new mongoose.Schema({
 });
 
 // Index for efficient queries
-courseTargetSchema.index({ courseName: 1, academicYear: 1, term: 1 });
+courseTargetSchema.index(
+  { courseName: 1, academicYear: 1, term: 1 },
+  { unique: true }
+);
 
 module.exports = mongoose.model("CourseTarget", courseTargetSchema);

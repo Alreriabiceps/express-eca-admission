@@ -303,18 +303,30 @@ router.patch("/:id/status", authMiddleware, async (req, res) => {
 
     if (
       !status ||
-      !["pending", "verified", "incomplete", "admitted", "rejected"].includes(
-        status
-      )
+      ![
+        "pending",
+        "verified",
+        "incomplete",
+        "admitted",
+        "rejected",
+        "enrolled",
+      ].includes(status)
     ) {
       return res.status(400).json({
         message: "Valid status is required",
       });
     }
 
+    const updateData = { status };
+    if (status === "enrolled") {
+      updateData.enrolledAt = new Date();
+    } else {
+      updateData.$unset = { enrolledAt: 1 };
+    }
+
     const application = await Application.findByIdAndUpdate(
       req.params.id,
-      { status },
+      updateData,
       { new: true }
     );
 
@@ -493,7 +505,27 @@ router.put("/:id", authMiddleware, async (req, res) => {
     if (email) updateData.email = email;
     if (contact) updateData.contact = contact;
     if (courseApplied) updateData.courseApplied = courseApplied;
-    if (status) updateData.status = status;
+    if (status) {
+      if (
+        ![
+          "pending",
+          "verified",
+          "incomplete",
+          "admitted",
+          "rejected",
+          "enrolled",
+        ].includes(status)
+      ) {
+        return res.status(400).json({ message: "Invalid status value" });
+      }
+
+      updateData.status = status;
+      if (status === "enrolled") {
+        updateData.enrolledAt = new Date();
+      } else {
+        updateData.$unset = { enrolledAt: 1 };
+      }
+    }
 
     const application = await Application.findByIdAndUpdate(
       req.params.id,

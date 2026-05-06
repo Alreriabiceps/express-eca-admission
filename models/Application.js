@@ -92,6 +92,24 @@ const applicationSchema = new mongoose.Schema(
     archivedAt: {
       type: Date,
     },
+    enrolledByImport: {
+      type: Boolean,
+      default: false,
+    },
+    enrolledImportedAt: {
+      type: Date,
+    },
+    enrollmentImportFile: {
+      type: String,
+      trim: true,
+    },
+    enrolledSchoolYear: {
+      type: String,
+      trim: true,
+    },
+    enrolledAt: {
+      type: Date,
+    },
   },
   {
     timestamps: true,
@@ -103,5 +121,6 @@ applicationSchema.index({ email: 1 });
 applicationSchema.index({ status: 1 });
 applicationSchema.index({ courseApplied: 1 });
 applicationSchema.index({ submittedAt: -1 });
+applicationSchema.index({ enrolledAt: -1 });
 
 module.exports = mongoose.model("Application", applicationSchema);

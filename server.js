@@ -2,6 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const CourseTarget = require("./models/CourseTarget");
 
 // Load environment variables
 dotenv.config();
@@ -33,9 +34,21 @@ mongoose
   .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/sam-db")
   .then(() => {
     console.log("Connected to MongoDB");
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-    });
+    CourseTarget.collection
+      .dropIndex("courseName_1")
+      .then(() => {
+        console.log("Dropped legacy CourseTarget index: courseName_1");
+      })
+      .catch((error) => {
+        if (error.codeName !== "IndexNotFound") {
+          console.warn("Could not drop legacy CourseTarget index:", error.message);
+        }
+      })
+      .finally(() => {
+        app.listen(PORT, () => {
+          console.log(`Server is running on port ${PORT}`);
+        });
+      });
   })
   .catch((error) => {
     console.error("MongoDB connection error:", error);

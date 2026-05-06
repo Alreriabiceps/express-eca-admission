@@ -5,37 +5,72 @@ const authMiddleware = require("../middleware/auth");
 
 const router = express.Router();
 
+const DEFAULT_YEAR = new Date().getFullYear();
+
+const getRangeByYearAndTerm = (yearInput, termInput = "all") => {
+  const year = Number.parseInt(yearInput, 10) || DEFAULT_YEAR;
+  const term = termInput || "all";
+
+  const allRange = {
+    startDate: new Date(year, 0, 1),
+    endDateExclusive: new Date(year + 1, 0, 1),
+    year,
+  };
+
+  if (term === "all") return allRange;
+
+  // 4-month term buckets: Jan-Apr, May-Aug, Sep-Dec
+  const termMonths = {
+    "1st": { start: 0, nextStart: 4 },
+    "2nd": { start: 4, nextStart: 8 },
+    summer: { start: 8, nextStart: 12 },
+  };
+
+  const termRange = termMonths[term];
+  if (!termRange) return allRange;
+
+  return {
+    startDate: new Date(year, termRange.start, 1),
+    endDateExclusive: new Date(year, termRange.nextStart, 1),
+    year,
+  };
+};
+
+const buildEnrolledDateFilter = (startDate, endDateExclusive) => ({
+  $or: [
+    {
+      enrolledAt: {
+        $gte: startDate,
+        $lt: endDateExclusive,
+      },
+    },
+    // Backward compatibility for historical imported records.
+    {
+      enrolledAt: { $exists: false },
+      enrolledImportedAt: {
+        $gte: startDate,
+        $lt: endDateExclusive,
+      },
+    },
+    // Legacy fallback for very old enrolled records.
+    {
+      enrolledAt: { $exists: false },
+      enrolledImportedAt: { $exists: false },
+      submittedAt: {
+        $gte: startDate,
+        $lt: endDateExclusive,
+      },
+    },
+  ],
+});
+
 // Get enrollment analytics data
 router.get("/enrollment", authMiddleware, async (req, res) => {
   try {
     const { year, term } = req.query;
-
-    // Build date filter based on year and term
-    const startDate = new Date(year, 0, 1); // January 1st of the year
-    const endDate = new Date(year, 11, 31); // December 31st of the year
-
-    let dateFilter = {
-      submittedAt: {
-        $gte: startDate,
-        $lte: endDate,
-      },
-    };
-
-    // If specific term is selected, adjust date range
-    if (term && term !== "all") {
-      const termMonths = {
-        "1st": { start: 0, end: 3 }, // Jan-Mar
-        "2nd": { start: 4, end: 7 }, // May-Aug
-        summer: { start: 8, end: 11 }, // Sep-Dec
-      };
-
-      if (termMonths[term]) {
-        dateFilter.submittedAt = {
-          $gte: new Date(year, termMonths[term].start, 1),
-          $lte: new Date(year, termMonths[term].end, 31),
-        };
-      }
-    }
+    const { startDate, endDateExclusive, year: normalizedYear } =
+      getRangeByYearAndTerm(year, term);
+    const dateFilter = buildEnrolledDateFilter(startDate, endDateExclusive);
 
     // Get all applications for the period
     const applications = await Application.find({
@@ -45,13 +80,14 @@ router.get("/enrollment", authMiddleware, async (req, res) => {
     });
 
     // Get course targets from database
-    const currentYear = year.toString();
+    const currentYear = normalizedYear.toString();
     const currentTerm = term || "all";
     
-    let targetQuery = { academicYear: currentYear, isActive: true };
-    if (currentTerm !== "all") {
-      targetQuery.term = currentTerm;
-    }
+    const targetQuery = {
+      academicYear: currentYear,
+      isActive: true,
+      term: currentTerm,
+    };
     
     const dbTargets = await CourseTarget.find(targetQuery);
     
@@ -137,20 +173,17 @@ router.get("/enrollment", authMiddleware, async (req, res) => {
 router.get("/comparison", authMiddleware, async (req, res) => {
   try {
     const { year } = req.query;
-    const currentYear = parseInt(year);
+    const currentYear = parseInt(year, 10) || DEFAULT_YEAR;
     const years = [currentYear - 2, currentYear - 1, currentYear];
 
     // Get enrollment data for each year
     const yearlyData = [];
-    for (const year of years) {
-      const startDate = new Date(year, 0, 1);
-      const endDate = new Date(year, 11, 31);
+    for (const eachYear of years) {
+      const startDate = new Date(eachYear, 0, 1);
+      const endDateExclusive = new Date(eachYear + 1, 0, 1);
 
       const applications = await Application.find({
-        submittedAt: {
-          $gte: startDate,
-          $lte: endDate,
-        },
+        ...buildEnrolledDateFilter(startDate, endDateExclusive),
         archived: { $ne: true },
         status: "enrolled",
       });
@@ -168,7 +201,7 @@ router.get("/comparison", authMiddleware, async (req, res) => {
           : 0;
 
       yearlyData.push({
-        year,
+        year: eachYear,
         enrollment,
         growth,
       });
@@ -176,13 +209,10 @@ router.get("/comparison", authMiddleware, async (req, res) => {
 
     // Get top performing courses for the current year
     const currentYearStart = new Date(currentYear, 0, 1);
-    const currentYearEnd = new Date(currentYear, 11, 31);
+    const currentYearEndExclusive = new Date(currentYear + 1, 0, 1);
 
     const currentYearApplications = await Application.find({
-      submittedAt: {
-        $gte: currentYearStart,
-        $lte: currentYearEnd,
-      },
+      ...buildEnrolledDateFilter(currentYearStart, currentYearEndExclusive),
       archived: { $ne: true },
       status: "enrolled",
     });
@@ -198,13 +228,10 @@ router.get("/comparison", authMiddleware, async (req, res) => {
 
     // Get previous year data for comparison
     const previousYearStart = new Date(currentYear - 1, 0, 1);
-    const previousYearEnd = new Date(currentYear - 1, 11, 31);
+    const previousYearEndExclusive = new Date(currentYear, 0, 1);
 
     const previousYearApplications = await Application.find({
-      submittedAt: {
-        $gte: previousYearStart,
-        $lte: previousYearEnd,
-      },
+      ...buildEnrolledDateFilter(previousYearStart, previousYearEndExclusive),
       archived: { $ne: true },
       status: "enrolled",
     });
@@ -248,15 +275,13 @@ router.get("/course/:courseName", authMiddleware, async (req, res) => {
     const { courseName } = req.params;
     const { year } = req.query;
 
-    const startDate = new Date(year, 0, 1);
-    const endDate = new Date(year, 11, 31);
+    const normalizedYear = parseInt(year, 10) || DEFAULT_YEAR;
+    const startDate = new Date(normalizedYear, 0, 1);
+    const endDateExclusive = new Date(normalizedYear + 1, 0, 1);
 
     const applications = await Application.find({
       courseApplied: courseName,
-      submittedAt: {
-        $gte: startDate,
-        $lte: endDate,
-      },
+      ...buildEnrolledDateFilter(startDate, endDateExclusive),
       archived: { $ne: true },
       status: "enrolled",
     });
@@ -269,7 +294,9 @@ router.get("/course/:courseName", authMiddleware, async (req, res) => {
 
     // Group by month
     const monthlyData = applications.reduce((acc, app) => {
-      const month = new Date(app.submittedAt).getMonth();
+      const month = new Date(
+        app.enrolledAt || app.enrolledImportedAt || app.submittedAt
+      ).getMonth();
       acc[month] = (acc[month] || 0) + 1;
       return acc;
     }, {});
