@@ -96,7 +96,6 @@ const emailTemplates = {
         </div>
         
         <div style="text-align: center; margin-top: 20px; color: #6c757d; font-size: 14px;">
-          <p>© 2024 Exact Colleges of Asia. All rights reserved.</p>
           <p>Suclayin, Arayat, Pampanga, Philippines</p>
         </div>
       </div>
@@ -414,46 +413,65 @@ const emailTemplates = {
     }
 
     return {
-      subject: "Application Verified - Exact Colleges of Asia",
+      subject: "Letter of Acceptance - Exact Colleges of Asia",
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #0D1B2A, #1B9AAA); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="margin: 0; font-size: 28px;">Exact Colleges of Asia</h1>
-            <p style="margin: 10px 0 0 0; opacity: 0.9;">Student Admission Management System</p>
-          </div>
-
-          <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px;">
-            <h2 style="color: #0D1B2A; margin-top: 0;">Your Application Has Been Verified</h2>
-
-            <p style="color: #343A40; font-size: 16px; line-height: 1.6;">
-              Dear <strong>${studentName}</strong>,
-            </p>
-
-            <p style="color: #343A40; font-size: 16px; line-height: 1.6;">
-              We are pleased to inform you that your application for the <strong>${course}</strong> program has been
-              <strong>verified</strong>. Your submitted documents have been reviewed and confirmed by our admissions team.
-            </p>
-
-            <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #1B9AAA;">
-              <h3 style="color: #0D1B2A; margin-top: 0;">Next Steps</h3>
-              <ul style="color: #343A40; margin: 10px 0 0 18px; padding: 0; font-size: 15px; line-height: 1.7;">
-                <li>Wait for your official admission decision, which will be sent to you via email.</li>
-                <li>Prepare your original documents in case they are required for verification during enrollment.</li>
-                <li>Regularly check your email and the Exact Colleges of Asia official channels for further instructions.</li>
-              </ul>
+        <div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #d1d5db; color: #111827;">
+          <div style="padding: 24px 32px 18px; text-align: center; border-bottom: 1px solid #d1d5db;">
+            <div style="font-size: 28px; font-weight: 800; color: #5B7FBE; letter-spacing: 1px; text-transform: uppercase;">EXACT COLLEGES OF ASIA</div>
+            <div style="font-size: 13px; color: #111827; line-height: 1.45; margin-top: 6px;">
+              Suclayin, Arayat, Pampanga<br/>
+              Cel No. 0925-870-1013 ; 0917-324-7803<br/>
+              Email address: exact.colleges@yahoo.com
             </div>
+          </div>
 
-            <p style="color: #343A40; font-size: 16px; line-height: 1.6;">
-              If you have any questions, please contact us at
-              <a href="mailto:info@exactcolleges.edu.ph" style="color: #1B9AAA;">info@exactcolleges.edu.ph</a>
-              or call us at (045) 123-4567.
+          <div style="padding: 44px 42px 36px;">
+            <div style="font-size: 18px; letter-spacing: 8px; text-align: center; margin-bottom: 46px;">LETTER OF ACCEPTANCE</div>
+
+            <p style="font-size: 15px; line-height: 1.7; margin: 0 0 36px;">Dear: <strong>${studentName}</strong></p>
+
+            <p style="font-size: 15px; line-height: 1.7; margin: 0 0 24px;">Greetings from Exact Colleges of Asia!</p>
+
+            <p style="font-size: 15px; line-height: 1.8; margin: 0 0 28px;">
+              It is with great pleasure to inform you of your <strong>ACCEPTANCE</strong> in the
+              <strong>${course}</strong> program for the First Semester, Academic Year 2025-2026 at the
+              <strong>Exact Colleges of Asia</strong>.
+            </p>
+
+            <p style="font-size: 15px; line-height: 1.7; margin: 0 0 8px;">
+              To proceed with your enrollment, kindly prepare the following documents:
+            </p>
+
+            <ul style="list-style: none; padding-left: 22px; margin: 0 0 24px; font-size: 15px; line-height: 1.65;">
+              <li>&#9744; &nbsp;2x2 recent photo white background with name tag (4pcs)</li>
+              <li>&#9744; &nbsp;Certificate of Good Moral Character</li>
+              <li>&#9744; &nbsp;Certificate of Barangay Residency with original Barangay Seal</li>
+              <li>&#9744; &nbsp;Photocopy of PSA Birth Certificate</li>
+              <li style="margin-top: 16px;">&#9744; &nbsp;Original Copy of Form 138</li>
+              <li>&#9744; &nbsp;Original Copy of Form 137</li>
+              <li>&#9744; &nbsp;Photocopy of Moving Up Certificate</li>
+            </ul>
+
+            <p style="font-size: 15px; line-height: 1.7; margin: 0 0 28px; font-style: italic;">
+              Note: You can submit the last three listed requirements once available.
+            </p>
+
+            <p style="font-size: 15px; line-height: 1.7; margin: 0 0 26px;">
+              To reserve a slot, please submit the abovementioned requirements in a
+              <strong>LONG BROWN ENVELOPE</strong> at the Registrar's Office and pay the
+              <strong>RESERVATION FEE</strong> at the Accounting Office.
+            </p>
+
+            <p style="font-size: 15px; line-height: 1.7; margin: 0 0 22px;">
+              Again, Congratulations and Welcome to the Exactian Family!
+            </p>
+
+            <p style="font-size: 15px; line-height: 1.6; margin: 0; font-weight: 700;">
+              -Dr. Ferdinand G. Marcos (Sgd)<br/>
+              School President
             </p>
           </div>
 
-          <div style="text-align: center; margin-top: 20px; color: #6c757d; font-size: 14px;">
-            <p>© 2024 Exact Colleges of Asia. All rights reserved.</p>
-            <p>Suclayin, Arayat, Pampanga, Philippines</p>
-          </div>
         </div>
       `,
     };
