@@ -1,9 +1,6 @@
 const nodemailer = require("nodemailer");
-const { Resend } = require("resend");
 
 const {
-  RESEND_API_KEY,
-  RESEND_FROM,
   EMAIL_SERVICE,
   EMAIL_HOST,
   EMAIL_PORT,
@@ -12,8 +9,6 @@ const {
   EMAIL_PASS,
   EMAIL_FROM,
 } = process.env;
-
-const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 const transporterOptions = {};
 
@@ -487,47 +482,10 @@ const emailTemplates = {
   },
 };
 
-// Send email function using Resend API when configured, with SMTP fallback.
+// Send email function using SMTP
 const sendEmail = async (to, template, data) => {
-  const provider = resend ? "resend" : "smtp";
-
   try {
     const emailTemplate = emailTemplates[template](...data);
-
-    if (resend) {
-      const from =
-        RESEND_FROM ||
-        EMAIL_FROM ||
-        "Exact Colleges of Asia <onboarding@resend.dev>";
-
-      console.log(`Sending email via Resend to: ${to}`);
-      console.log(`Subject: ${emailTemplate.subject}`);
-
-      const result = await resend.emails.send({
-        from,
-        to,
-        subject: emailTemplate.subject,
-        html: emailTemplate.html,
-      });
-
-      if (result.error) {
-        console.error("Resend email failed:", result.error);
-        return {
-          success: false,
-          error: result.error.message || "Resend email failed",
-          provider: "resend",
-        };
-      }
-
-      console.log("Email sent successfully via Resend");
-      console.log("Message ID:", result.data?.id || "N/A");
-
-      return {
-        success: true,
-        messageId: result.data?.id || "resend-success",
-        provider: "resend",
-      };
-    }
 
     if (!EMAIL_USER || !EMAIL_PASS) {
       console.error("❌ EMAIL_USER or EMAIL_PASS not configured in .env");
@@ -558,13 +516,13 @@ const sendEmail = async (to, template, data) => {
       provider: "smtp",
     };
   } catch (error) {
-    console.error(`${provider.toUpperCase()} email failed:`, error.message);
+    console.error("SMTP email failed:", error.message);
     console.error("📧 Error details:", error);
 
     return {
       success: false,
       error: error.message,
-      provider,
+      provider: "smtp",
     };
   }
 };
