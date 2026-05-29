@@ -3,8 +3,14 @@ const multer = require("multer");
 const XLSX = require("xlsx");
 const authMiddleware = require("../middleware/auth");
 const Application = require("../models/Application");
+const { getDefaultRequirementsForCourse } = require("../services/requirementService");
 
 const router = express.Router();
+
+const IMPORTED_PLACEHOLDER_IMAGE =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Crect width='160' height='160' fill='%23e5e7eb'/%3E%3Ccircle cx='80' cy='62' r='28' fill='%239ca3af'/%3E%3Cpath d='M34 142c7-29 25-44 46-44s39 15 46 44' fill='%239ca3af'/%3E%3C/svg%3E";
+const IMPORTED_PLACEHOLDER_SIGNATURE =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='90' viewBox='0 0 260 90'%3E%3Crect width='260' height='90' fill='%23ffffff'/%3E%3Cpath d='M24 58c31-26 43 10 68-8 17-13 25-22 39-9 12 11 23 14 43-2 21-17 32-8 54 2' fill='none' stroke='%239ca3af' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -101,6 +107,40 @@ const mapRowFields = (row) => {
     ) {
       mapped.program = String(value || "").trim();
     }
+
+    if (
+      normalized === "email" ||
+      normalized === "email address" ||
+      normalized === "student email"
+    ) {
+      mapped.email = String(value || "").trim();
+    }
+
+    if (
+      normalized === "contact" ||
+      normalized === "contact number" ||
+      normalized === "phone" ||
+      normalized === "mobile"
+    ) {
+      mapped.contact = String(value || "").trim();
+    }
+
+    if (
+      normalized === "student id" ||
+      normalized === "student no" ||
+      normalized === "student number" ||
+      normalized === "id number"
+    ) {
+      mapped.studentId = String(value || "").trim();
+    }
+
+    if (
+      normalized === "enrollment date" ||
+      normalized === "enrolled date" ||
+      normalized === "date enrolled"
+    ) {
+      mapped.enrollmentDate = value;
+    }
   });
 
   return mapped;
@@ -108,6 +148,52 @@ const mapRowFields = (row) => {
 
 const escapeRegex = (value) =>
   String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buildDisplayName = ({ fullName, firstName, middleName, lastName }) =>
+  (
+    fullName ||
+    [firstName, middleName, lastName].filter(Boolean).join(" ") ||
+    [firstName, lastName].filter(Boolean).join(" ")
+  ).trim();
+
+const buildImportedEmail = ({ email, studentId, displayName, rowIndex }) => {
+  if (email) return email;
+
+  const base = studentId || displayName || `row-${rowIndex + 1}`;
+  const safeBase = base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
+    .slice(0, 48);
+
+  return `${safeBase || `row-${rowIndex + 1}`}+imported@enrollment.local`;
+};
+
+const buildImportedOnlyQuery = ({ displayName, dateRange, program, studentId }) => {
+  const query = {
+    archived: { $ne: true },
+    enrolledByImport: true,
+    importedOnly: true,
+  };
+
+  if (studentId) {
+    query.importedStudentId = new RegExp(`^${escapeRegex(studentId)}$`, "i");
+    return query;
+  }
+
+  query.name = new RegExp(`^${escapeRegex(displayName)}$`, "i");
+  if (program) {
+    query.courseApplied = new RegExp(`^${escapeRegex(program)}$`, "i");
+  }
+  if (dateRange) {
+    query.dateOfBirth = {
+      $gte: dateRange.start,
+      $lte: dateRange.end,
+    };
+  }
+
+  return query;
+};
 
 router.get("/", authMiddleware, (req, res) => {
   res.json({
@@ -158,14 +244,23 @@ router.post(
 
       let matched = 0;
       let updated = 0;
+      let created = 0;
       let alreadyEnrolled = 0;
       const unmatched = [];
 
-      for (const row of rows) {
+      for (const [rowIndex, row] of rows.entries()) {
         const record = mapRowFields(row);
         const fullName = String(record.fullName || "").trim();
         const firstName = String(record.firstName || "").trim();
+        const middleName = String(record.middleName || "").trim();
         const lastName = String(record.lastName || "").trim();
+        const displayName = buildDisplayName({
+          fullName,
+          firstName,
+          middleName,
+          lastName,
+        });
+        const program = String(record.program || "").trim() || "Unspecified Program";
 
         if (!fullName && (!firstName || !lastName)) {
           unmatched.push({
@@ -176,7 +271,10 @@ router.post(
         }
 
         const dateRange = parseDateToDayRange(record.birthdate);
-        const query = { archived: { $ne: true }, status: "verified" };
+        const query = {
+          archived: { $ne: true },
+          status: { $in: ["verified", "enrolled"] },
+        };
 
         if (fullName) {
           query.name = new RegExp(`^${escapeRegex(fullName)}$`, "i");
@@ -198,13 +296,81 @@ router.post(
         const application = await Application.findOne(query);
 
         if (!application) {
-          const displayName = fullName || `${firstName} ${lastName}`.trim();
-          unmatched.push({
-            name: displayName,
-            reason: dateRange
-              ? "No applicant matched by name + birthdate"
-              : "No applicant matched by name",
-          });
+          const existingImportedStudent = await Application.findOne(
+            buildImportedOnlyQuery({
+              displayName,
+              dateRange,
+              program,
+              studentId: record.studentId,
+            })
+          );
+
+          if (existingImportedStudent?.status === "enrolled") {
+            alreadyEnrolled += 1;
+            continue;
+          }
+
+          const importTime = new Date();
+          const enrolledAtRange = parseDateToDayRange(record.enrollmentDate);
+          const enrolledAt = enrolledAtRange?.start || importTime;
+          const importedApplication =
+            existingImportedStudent ||
+            new Application({
+              name: displayName,
+              lastName,
+              givenName: firstName,
+              middleName,
+              email: buildImportedEmail({
+                email: record.email,
+                studentId: record.studentId,
+                displayName,
+                rowIndex,
+              }),
+              contact: record.contact || "N/A",
+              courseApplied: program,
+              dateOfBirth: dateRange?.start,
+              status: "enrolled",
+              photoUrl: IMPORTED_PLACEHOLDER_IMAGE,
+              signatureUrl: IMPORTED_PLACEHOLDER_SIGNATURE,
+              importedOnly: true,
+              submittedAt: importTime,
+              requirements: getDefaultRequirementsForCourse(program),
+            });
+
+          importedApplication.name = displayName;
+          importedApplication.lastName = lastName || importedApplication.lastName;
+          importedApplication.givenName =
+            firstName || importedApplication.givenName;
+          importedApplication.middleName =
+            middleName || importedApplication.middleName;
+          importedApplication.email =
+            record.email ||
+            importedApplication.email ||
+            buildImportedEmail({
+              email: "",
+              studentId: record.studentId,
+              displayName,
+              rowIndex,
+            });
+          importedApplication.contact =
+            record.contact || importedApplication.contact || "N/A";
+          importedApplication.courseApplied = program;
+          if (dateRange) importedApplication.dateOfBirth = dateRange.start;
+          importedApplication.status = "enrolled";
+          importedApplication.enrolledByImport = true;
+          importedApplication.importedOnly = true;
+          importedApplication.importedStudentId = record.studentId;
+          importedApplication.enrolledAt = enrolledAt;
+          importedApplication.enrolledImportedAt = importTime;
+          importedApplication.enrollmentImportFile = req.file.originalname;
+          importedApplication.enrolledSchoolYear = selectedSchoolYear;
+          if (!importedApplication.requirements?.length) {
+            importedApplication.requirements =
+              getDefaultRequirementsForCourse(program);
+          }
+
+          await importedApplication.save();
+          created += 1;
           continue;
         }
 
@@ -216,12 +382,17 @@ router.post(
         }
 
         const importTime = new Date();
+        const enrolledAtRange = parseDateToDayRange(record.enrollmentDate);
         application.status = "enrolled";
         application.enrolledByImport = true;
-        application.enrolledAt = importTime;
+        application.importedOnly = false;
+        application.enrolledAt = enrolledAtRange?.start || importTime;
         application.enrolledImportedAt = importTime;
         application.enrollmentImportFile = req.file.originalname;
         application.enrolledSchoolYear = selectedSchoolYear;
+        if (record.studentId) {
+          application.importedStudentId = record.studentId;
+        }
         if (record.program) {
           application.courseApplied = record.program;
         }
@@ -236,6 +407,7 @@ router.post(
         totalRows: rows.length,
         matched,
         updated,
+        created,
         alreadyEnrolled,
         unmatchedCount: unmatched.length,
         unmatched: unmatched.slice(0, 20),
@@ -357,12 +529,24 @@ router.delete("/batch", authMiddleware, async (req, res) => {
       );
     }
 
-    const result = await Application.updateMany(filter, {
+    const importedOnlyFilter = {
+      ...filter,
+      importedOnly: true,
+    };
+    const matchedAdmissionFilter = {
+      ...filter,
+      importedOnly: { $ne: true },
+    };
+
+    const deleteResult = await Application.deleteMany(importedOnlyFilter);
+    const result = await Application.updateMany(matchedAdmissionFilter, {
       $set: {
         status: "verified",
       },
       $unset: {
         enrolledByImport: 1,
+        importedOnly: 1,
+        importedStudentId: 1,
         enrolledAt: 1,
         enrolledImportedAt: 1,
         enrollmentImportFile: 1,
@@ -374,7 +558,9 @@ router.delete("/batch", authMiddleware, async (req, res) => {
       message: "Batch reset completed",
       sourceFile: normalizedSource || null,
       schoolYear: schoolYear ? String(schoolYear).trim() : null,
-      resetCount: result.modifiedCount || 0,
+      resetCount: (result.modifiedCount || 0) + (deleteResult.deletedCount || 0),
+      revertedCount: result.modifiedCount || 0,
+      removedImportedOnly: deleteResult.deletedCount || 0,
     });
   } catch (error) {
     console.error("Reset enrollment batch error:", error);

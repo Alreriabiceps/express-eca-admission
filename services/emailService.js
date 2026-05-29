@@ -1,4 +1,8 @@
 const nodemailer = require("nodemailer");
+const {
+  getRequirementNamesForCourse,
+  isMarineCourse,
+} = require("./requirementService");
 
 const {
   EMAIL_SERVICE,
@@ -340,12 +344,9 @@ const emailTemplates = {
     `,
   }),
   applicationVerified: (studentName, course) => {
-    const lowerCourse = (course || "").toLowerCase();
-    const isMarineCourse =
-      lowerCourse.includes("marine transportation") ||
-      lowerCourse.includes("marine engineering");
+    const requirementItems = getRequirementNamesForCourse(course);
 
-    if (isMarineCourse) {
+    if (isMarineCourse(course)) {
       return {
         subject: "Letter of Acceptance - Exact Colleges of Asia",
         html: `
@@ -383,14 +384,9 @@ const emailTemplates = {
               </p>
 
               <ul style="list-style: none; padding-left: 22px; margin: 0 0 24px; font-size: 15px; line-height: 1.65;">
-                <li>&#9744; &nbsp;Medical Result</li>
-                <li>&#9744; &nbsp;NaMMAT Result</li>
-                <li>&#9744; &nbsp;2x2 recent photo white background with name tag (4pcs)</li>
-                <li>&#9744; &nbsp;Certificate of Good Moral Character</li>
-                <li>&#9744; &nbsp;Photocopy of PSA Birth Certificate</li>
-                <li>&#9744; &nbsp;Original Copy of Form 138</li>
-                <li>&#9744; &nbsp;Original Copy of Form 137</li>
-                <li>&#9744; &nbsp;Photocopy of Moving Up Certificate</li>
+                ${requirementItems
+                  .map((item) => `<li>&#9744; &nbsp;${item}</li>`)
+                  .join("")}
               </ul>
 
               <p style="font-size: 15px; line-height: 1.7; margin: 0 0 28px; font-style: italic;">
@@ -447,13 +443,9 @@ const emailTemplates = {
             </p>
 
             <ul style="list-style: none; padding-left: 22px; margin: 0 0 24px; font-size: 15px; line-height: 1.65;">
-              <li>&#9744; &nbsp;2x2 recent photo white background with name tag (4pcs)</li>
-              <li>&#9744; &nbsp;Certificate of Good Moral Character</li>
-              <li>&#9744; &nbsp;Certificate of Barangay Residency with original Barangay Seal</li>
-              <li>&#9744; &nbsp;Photocopy of PSA Birth Certificate</li>
-              <li style="margin-top: 16px;">&#9744; &nbsp;Original Copy of Form 138</li>
-              <li>&#9744; &nbsp;Original Copy of Form 137</li>
-              <li>&#9744; &nbsp;Photocopy of Moving Up Certificate</li>
+              ${requirementItems
+                .map((item) => `<li>&#9744; &nbsp;${item}</li>`)
+                .join("")}
             </ul>
 
             <p style="font-size: 15px; line-height: 1.7; margin: 0 0 28px; font-style: italic;">

@@ -63,6 +63,28 @@ const applicationSchema = new mongoose.Schema(
       enum: ["pending", "verified", "incomplete", "admitted", "rejected", "enrolled"],
       default: "pending",
     },
+    requirements: [
+      {
+        name: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        status: {
+          type: String,
+          enum: ["pending", "complete", "passed"],
+          default: "pending",
+        },
+        note: {
+          type: String,
+          trim: true,
+          default: "",
+        },
+        updatedAt: {
+          type: Date,
+        },
+      },
+    ],
     photoUrl: {
       type: String,
       required: true,
@@ -95,6 +117,14 @@ const applicationSchema = new mongoose.Schema(
     enrolledByImport: {
       type: Boolean,
       default: false,
+    },
+    importedOnly: {
+      type: Boolean,
+      default: false,
+    },
+    importedStudentId: {
+      type: String,
+      trim: true,
     },
     enrolledImportedAt: {
       type: Date,

@@ -4,8 +4,75 @@ const cloudinary = require("cloudinary").v2;
 const Application = require("../models/Application");
 const authMiddleware = require("../middleware/auth");
 const { sendEmail } = require("../services/emailService");
+const {
+  getDefaultRequirementsForCourse,
+  getRequirementSummary,
+  mergeRequirementsForCourse,
+  prepareRequirementsForSave,
+} = require("../services/requirementService");
 
 const router = express.Router();
+
+const courseGroups = {
+  maritime: [
+    "Bachelor of Science in Marine Transportation",
+    "Bachelor of Science in Marine Engineering",
+  ],
+  nursing: ["Bachelor of Science in Nursing"],
+  education: [
+    "Bachelor of Early Childhood Education",
+    "Bachelor of Technical-Vocational Teacher Education (Major in Food and Service Management)",
+  ],
+  business: [
+    "Bachelor of Science in Entrepreneurship",
+    "Bachelor of Science in Management Accounting",
+  ],
+  information: ["Bachelor of Science in Information System"],
+  tourism: ["Bachelor of Science in Tourism Management"],
+  criminology: ["Bachelor of Science in Criminology"],
+};
+
+const buildBatchEmailFilter = ({ status, courseGroup, course, search }) => {
+  const filter = { archived: { $ne: true } };
+  const selectedGroup = String(courseGroup || "").trim();
+  const selectedCourse = String(course || "").trim();
+
+  if (status) {
+    filter.status = status;
+  }
+
+  if (selectedCourse) {
+    filter.courseApplied = selectedCourse;
+  } else if (selectedGroup && selectedGroup !== "all" && courseGroups[selectedGroup]) {
+    filter.courseApplied = { $in: courseGroups[selectedGroup] };
+  }
+
+  if (search) {
+    const regex = new RegExp(search, "i");
+    filter.$or = [{ name: regex }, { email: regex }, { courseApplied: regex }];
+  }
+
+  return filter;
+};
+
+const hasSendableEmail = (email) =>
+  /\S+@\S+\.\S+/.test(String(email || "")) &&
+  !String(email || "").endsWith("@enrollment.local");
+
+const withRequirementChecklist = (application) => {
+  const plainApplication =
+    typeof application.toObject === "function" ? application.toObject() : application;
+  const requirements = mergeRequirementsForCourse(
+    plainApplication.courseApplied,
+    plainApplication.requirements
+  );
+
+  return {
+    ...plainApplication,
+    requirements,
+    requirementSummary: getRequirementSummary(requirements),
+  };
+};
 
 // Configure Cloudinary
 cloudinary.config({
@@ -112,6 +179,7 @@ router.post(
         email,
         contact,
         courseApplied,
+        requirements: getDefaultRequirementsForCourse(courseApplied),
         photoUrl: photoResult.secure_url,
         signatureUrl: signatureResult.secure_url,
       };
@@ -203,12 +271,13 @@ router.get("/", authMiddleware, async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit))
       .select("-__v");
+    const applicationsWithRequirements = applications.map(withRequirementChecklist);
 
     // Get total count for pagination
     const total = await Application.countDocuments(filter);
 
     res.json({
-      applications,
+      applications: applicationsWithRequirements,
       pagination: {
         current: parseInt(page),
         pages: Math.ceil(total / parseInt(limit)),
@@ -242,6 +311,7 @@ router.get("/archived", authMiddleware, async (req, res) => {
       .skip(skip)
       .limit(limitNum)
       .select("-__v");
+    const applicationsWithRequirements = applications.map(withRequirementChecklist);
 
     const total = await Application.countDocuments({ archived: true });
 
@@ -253,7 +323,7 @@ router.get("/archived", authMiddleware, async (req, res) => {
     );
 
     res.json({
-      applications: applications || [],
+      applications: applicationsWithRequirements || [],
       pagination: {
         current: pageNum,
         pages: Math.ceil(total / limitNum),
@@ -282,7 +352,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "Application not found" });
     }
 
-    res.json(application);
+    res.json(withRequirementChecklist(application));
   } catch (error) {
     console.error("Get application error:", error);
     res
@@ -370,11 +440,51 @@ router.patch("/:id/status", authMiddleware, async (req, res) => {
 
     res.json({
       message: "Application status updated successfully",
-      application,
+      application: withRequirementChecklist(application),
     });
   } catch (error) {
     console.error("Update status error:", error);
     res.status(500).json({ message: "Server error while updating status" });
+  }
+});
+
+// Update application requirements checklist (admin only)
+router.patch("/:id/requirements", authMiddleware, async (req, res) => {
+  try {
+    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ message: "Invalid application ID format" });
+    }
+
+    const { requirements } = req.body;
+
+    if (!Array.isArray(requirements)) {
+      return res.status(400).json({
+        message: "Requirements array is required",
+      });
+    }
+
+    const application = await Application.findById(req.params.id);
+
+    if (!application) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+
+    application.requirements = prepareRequirementsForSave(
+      application.courseApplied,
+      requirements,
+      application.requirements
+    );
+    await application.save();
+
+    res.json({
+      message: "Requirements updated successfully",
+      application: withRequirementChecklist(application),
+    });
+  } catch (error) {
+    console.error("Update requirements error:", error);
+    res
+      .status(500)
+      .json({ message: "Server error while updating requirements" });
   }
 });
 
@@ -489,6 +599,110 @@ router.post(
     }
   }
 );
+
+router.get("/email/recipients", authMiddleware, async (req, res) => {
+  try {
+    const { status = "", courseGroup = "all", course = "", search = "" } =
+      req.query;
+    const filter = buildBatchEmailFilter({
+      status,
+      courseGroup,
+      course,
+      search,
+    });
+
+    const applications = await Application.find(filter)
+      .sort({ name: 1 })
+      .limit(15)
+      .select("name email courseApplied status");
+    const total = await Application.countDocuments(filter);
+    const sendableCount = await Application.countDocuments({
+      ...filter,
+      email: { $not: /@enrollment\.local$/i },
+    });
+
+    res.json({
+      total,
+      sendableCount,
+      skippedCount: Math.max(total - sendableCount, 0),
+      preview: applications,
+    });
+  } catch (error) {
+    console.error("Get batch email recipients error:", error);
+    res
+      .status(500)
+      .json({ message: "Server error while loading email recipients" });
+  }
+});
+
+router.post("/email/send-batch", authMiddleware, async (req, res) => {
+  try {
+    const {
+      subject,
+      message,
+      status = "",
+      courseGroup = "all",
+      course = "",
+      search = "",
+    } = req.body || {};
+
+    if (!subject || !message) {
+      return res.status(400).json({
+        message: "Subject and message are required",
+      });
+    }
+
+    const filter = buildBatchEmailFilter({
+      status,
+      courseGroup,
+      course,
+      search,
+    });
+    const recipients = await Application.find(filter)
+      .sort({ name: 1 })
+      .select("name email courseApplied status");
+
+    let sent = 0;
+    let skipped = 0;
+    const failed = [];
+
+    for (const recipient of recipients) {
+      if (!hasSendableEmail(recipient.email)) {
+        skipped += 1;
+        continue;
+      }
+
+      const emailResult = await sendEmail(recipient.email, "customNotification", [
+        recipient.name,
+        subject,
+        message,
+        "batch",
+      ]);
+
+      if (emailResult.success) {
+        sent += 1;
+      } else {
+        failed.push({
+          name: recipient.name,
+          email: recipient.email,
+          error: emailResult.error || "Failed to send",
+        });
+      }
+    }
+
+    res.json({
+      message: "Batch email processed",
+      totalRecipients: recipients.length,
+      sent,
+      skipped,
+      failedCount: failed.length,
+      failed: failed.slice(0, 20),
+    });
+  } catch (error) {
+    console.error("Send batch email error:", error);
+    res.status(500).json({ message: "Server error while sending batch email" });
+  }
+});
 
 // Update application (admin only)
 router.put("/:id", authMiddleware, async (req, res) => {
