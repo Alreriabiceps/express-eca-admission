@@ -41,7 +41,35 @@ const applicationSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    previousSchoolAddress: {
+      type: String,
+      trim: true,
+    },
+    honorsAwards: {
+      type: String,
+      trim: true,
+    },
     presentAddress: {
+      type: String,
+      trim: true,
+    },
+    addressHouseNo: {
+      type: String,
+      trim: true,
+    },
+    addressStreet: {
+      type: String,
+      trim: true,
+    },
+    addressBarangay: {
+      type: String,
+      trim: true,
+    },
+    addressCityMunicipality: {
+      type: String,
+      trim: true,
+    },
+    addressProvince: {
       type: String,
       trim: true,
     },
@@ -54,6 +82,81 @@ const applicationSchema = new mongoose.Schema(
     sex: {
       type: String,
       enum: ["Male", "Female"],
+    },
+    telephoneNumber: {
+      type: String,
+      trim: true,
+    },
+    nationality: {
+      type: String,
+      trim: true,
+    },
+    religion: {
+      type: String,
+      trim: true,
+    },
+    civilStatus: {
+      type: String,
+      enum: ["", "Single", "Married"],
+      default: "",
+    },
+    fatherLastName: {
+      type: String,
+      trim: true,
+    },
+    fatherFirstName: {
+      type: String,
+      trim: true,
+    },
+    fatherMiddleName: {
+      type: String,
+      trim: true,
+    },
+    fatherMobileNumber: {
+      type: String,
+      trim: true,
+    },
+    fatherEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+    },
+    fatherOccupation: {
+      type: String,
+      trim: true,
+    },
+    fatherWorkAddress: {
+      type: String,
+      trim: true,
+    },
+    motherLastName: {
+      type: String,
+      trim: true,
+    },
+    motherFirstName: {
+      type: String,
+      trim: true,
+    },
+    motherMiddleName: {
+      type: String,
+      trim: true,
+    },
+    motherMobileNumber: {
+      type: String,
+      trim: true,
+    },
+    motherEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+    },
+    motherOccupation: {
+      type: String,
+      trim: true,
+    },
+    motherWorkAddress: {
+      type: String,
+      trim: true,
     },
     dateSigned: {
       type: String,

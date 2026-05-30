@@ -2,6 +2,7 @@ const express = require("express");
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const Application = require("../models/Application");
+const EmailTemplate = require("../models/EmailTemplate");
 const authMiddleware = require("../middleware/auth");
 const { sendEmail } = require("../services/emailService");
 const {
@@ -10,6 +11,7 @@ const {
   mergeRequirementsForCourse,
   prepareRequirementsForSave,
 } = require("../services/requirementService");
+const { buildAdmissionFormHtml } = require("../services/admissionFormPrintService");
 
 const router = express.Router();
 
@@ -58,6 +60,22 @@ const buildBatchEmailFilter = ({ status, courseGroup, course, search }) => {
 const hasSendableEmail = (email) =>
   /\S+@\S+\.\S+/.test(String(email || "")) &&
   !String(email || "").endsWith("@enrollment.local");
+
+const normalizeEmailTemplatePayload = ({ label, subject, message } = {}) => ({
+  label: String(label || "").trim(),
+  subject: String(subject || "").trim(),
+  message: String(message || "").trim(),
+});
+
+const getEmailTemplateValidationError = ({ label, subject, message }) => {
+  if (!label) return "Template name is required";
+  if (!subject) return "Template subject is required";
+  if (!message) return "Template message is required";
+  if (label.length > 80) return "Template name must be 80 characters or less";
+  if (subject.length > 200) return "Subject must be 200 characters or less";
+  if (message.length > 10000) return "Message must be 10,000 characters or less";
+  return "";
+};
 
 const withRequirementChecklist = (application) => {
   const plainApplication =
@@ -129,10 +147,35 @@ router.post(
         givenName,
         middleName,
         schoolLastAttended,
+        previousSchoolAddress,
+        honorsAwards,
         presentAddress,
+        addressHouseNo,
+        addressStreet,
+        addressBarangay,
+        addressCityMunicipality,
+        addressProvince,
         dateOfBirth,
         age,
         sex,
+        telephoneNumber,
+        nationality,
+        religion,
+        civilStatus,
+        fatherLastName,
+        fatherFirstName,
+        fatherMiddleName,
+        fatherMobileNumber,
+        fatherEmail,
+        fatherOccupation,
+        fatherWorkAddress,
+        motherLastName,
+        motherFirstName,
+        motherMiddleName,
+        motherMobileNumber,
+        motherEmail,
+        motherOccupation,
+        motherWorkAddress,
         dateSigned,
         examDateTime,
         examinerDateSigned,
@@ -190,10 +233,45 @@ router.post(
       if (middleName) applicationData.middleName = middleName;
       if (schoolLastAttended)
         applicationData.schoolLastAttended = schoolLastAttended;
+      if (previousSchoolAddress)
+        applicationData.previousSchoolAddress = previousSchoolAddress;
+      if (honorsAwards) applicationData.honorsAwards = honorsAwards;
       if (presentAddress) applicationData.presentAddress = presentAddress;
+      if (addressHouseNo) applicationData.addressHouseNo = addressHouseNo;
+      if (addressStreet) applicationData.addressStreet = addressStreet;
+      if (addressBarangay) applicationData.addressBarangay = addressBarangay;
+      if (addressCityMunicipality)
+        applicationData.addressCityMunicipality = addressCityMunicipality;
+      if (addressProvince) applicationData.addressProvince = addressProvince;
       if (dateOfBirth) applicationData.dateOfBirth = new Date(dateOfBirth);
       if (age) applicationData.age = parseInt(age);
       if (sex) applicationData.sex = sex;
+      if (telephoneNumber) applicationData.telephoneNumber = telephoneNumber;
+      if (nationality) applicationData.nationality = nationality;
+      if (religion) applicationData.religion = religion;
+      if (civilStatus) applicationData.civilStatus = civilStatus;
+      if (fatherLastName) applicationData.fatherLastName = fatherLastName;
+      if (fatherFirstName) applicationData.fatherFirstName = fatherFirstName;
+      if (fatherMiddleName)
+        applicationData.fatherMiddleName = fatherMiddleName;
+      if (fatherMobileNumber)
+        applicationData.fatherMobileNumber = fatherMobileNumber;
+      if (fatherEmail) applicationData.fatherEmail = fatherEmail;
+      if (fatherOccupation)
+        applicationData.fatherOccupation = fatherOccupation;
+      if (fatherWorkAddress)
+        applicationData.fatherWorkAddress = fatherWorkAddress;
+      if (motherLastName) applicationData.motherLastName = motherLastName;
+      if (motherFirstName) applicationData.motherFirstName = motherFirstName;
+      if (motherMiddleName)
+        applicationData.motherMiddleName = motherMiddleName;
+      if (motherMobileNumber)
+        applicationData.motherMobileNumber = motherMobileNumber;
+      if (motherEmail) applicationData.motherEmail = motherEmail;
+      if (motherOccupation)
+        applicationData.motherOccupation = motherOccupation;
+      if (motherWorkAddress)
+        applicationData.motherWorkAddress = motherWorkAddress;
       if (dateSigned) applicationData.dateSigned = dateSigned;
 
       // Add examination permit fields if provided (for maritime courses)
@@ -338,6 +416,35 @@ router.get("/archived", authMiddleware, async (req, res) => {
   }
 });
 
+router.get("/:id/print/admission-form", authMiddleware, async (req, res) => {
+  try {
+    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).send("Invalid application ID format");
+    }
+
+    const application = await Application.findById(req.params.id).select("-__v");
+
+    if (!application) {
+      return res.status(404).send("Application not found");
+    }
+
+    const html = buildAdmissionFormHtml(application, {
+      autoPrint: req.query.autoPrint === "1",
+      includeToolbar: true,
+    });
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="admission-form-${application._id}.html"`
+    );
+    res.send(html);
+  } catch (error) {
+    console.error("Print admission form error:", error);
+    res.status(500).send("Server error while generating admission form");
+  }
+});
+
 // Get single application (admin only)
 router.get("/:id", authMiddleware, async (req, res) => {
   try {
@@ -422,6 +529,7 @@ router.patch("/:id/status", authMiddleware, async (req, res) => {
         await sendEmail(application.email, "applicationVerified", [
           application.name,
           application.courseApplied,
+          application,
         ]);
         console.log("Application verified email sent to:", application.email);
       } else if (status === "admitted" || status === "rejected") {
@@ -701,6 +809,116 @@ router.post("/email/send-batch", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("Send batch email error:", error);
     res.status(500).json({ message: "Server error while sending batch email" });
+  }
+});
+
+router.get("/email/templates", authMiddleware, async (req, res) => {
+  try {
+    const templates = await EmailTemplate.find({ createdBy: req.admin._id })
+      .sort({ updatedAt: -1 })
+      .select("-__v");
+
+    res.json({ templates });
+  } catch (error) {
+    console.error("Get email templates error:", error);
+    res
+      .status(500)
+      .json({ message: "Server error while loading email templates" });
+  }
+});
+
+router.post("/email/templates", authMiddleware, async (req, res) => {
+  try {
+    const payload = normalizeEmailTemplatePayload(req.body);
+    const validationError = getEmailTemplateValidationError(payload);
+
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
+    }
+
+    const template = await EmailTemplate.create({
+      ...payload,
+      createdBy: req.admin._id,
+      updatedBy: req.admin._id,
+    });
+
+    res.status(201).json({
+      message: "Email template saved successfully",
+      template,
+    });
+  } catch (error) {
+    console.error("Create email template error:", error);
+    res
+      .status(500)
+      .json({ message: "Server error while saving email template" });
+  }
+});
+
+router.put("/email/templates/:templateId", authMiddleware, async (req, res) => {
+  try {
+    if (!req.params.templateId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ message: "Invalid email template ID" });
+    }
+
+    const payload = normalizeEmailTemplatePayload(req.body);
+    const validationError = getEmailTemplateValidationError(payload);
+
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
+    }
+
+    const template = await EmailTemplate.findOneAndUpdate(
+      {
+        _id: req.params.templateId,
+        createdBy: req.admin._id,
+      },
+      {
+        ...payload,
+        updatedBy: req.admin._id,
+      },
+      { new: true, runValidators: true }
+    ).select("-__v");
+
+    if (!template) {
+      return res.status(404).json({ message: "Email template not found" });
+    }
+
+    res.json({
+      message: "Email template updated successfully",
+      template,
+    });
+  } catch (error) {
+    console.error("Update email template error:", error);
+    res
+      .status(500)
+      .json({ message: "Server error while updating email template" });
+  }
+});
+
+router.delete("/email/templates/:templateId", authMiddleware, async (req, res) => {
+  try {
+    if (!req.params.templateId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ message: "Invalid email template ID" });
+    }
+
+    const template = await EmailTemplate.findOneAndDelete({
+      _id: req.params.templateId,
+      createdBy: req.admin._id,
+    });
+
+    if (!template) {
+      return res.status(404).json({ message: "Email template not found" });
+    }
+
+    res.json({
+      message: "Email template deleted successfully",
+      templateId: req.params.templateId,
+    });
+  } catch (error) {
+    console.error("Delete email template error:", error);
+    res
+      .status(500)
+      .json({ message: "Server error while deleting email template" });
   }
 });
 

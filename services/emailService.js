@@ -3,6 +3,7 @@ const {
   getRequirementNamesForCourse,
   isMarineCourse,
 } = require("./requirementService");
+const { buildAdmissionFormHtml } = require("./admissionFormPrintService");
 
 const {
   EMAIL_SERVICE,
@@ -37,6 +38,22 @@ if (EMAIL_USER && EMAIL_PASS) {
 }
 
 const transporter = nodemailer.createTransport(transporterOptions);
+
+const getPrintableAdmissionFormAttachment = (application) => {
+  if (!application) return null;
+
+  const printableHtml = buildAdmissionFormHtml(application, {
+    autoPrint: false,
+    includeToolbar: true,
+  });
+  const applicationId = application._id ? String(application._id) : "application";
+
+  return {
+    filename: `admission-form-${applicationId}.html`,
+    content: printableHtml,
+    contentType: "text/html; charset=utf-8",
+  };
+};
 
 // Email templates (keeping all existing templates intact)
 const emailTemplates = {
@@ -343,12 +360,24 @@ const emailTemplates = {
       </div>
     `,
   }),
-  applicationVerified: (studentName, course) => {
+  applicationVerified: (studentName, course, application) => {
     const requirementItems = getRequirementNamesForCourse(course);
+    const printableAttachment = getPrintableAdmissionFormAttachment(application);
+    const printableNotice = printableAttachment
+      ? `
+        <div style="background: #eef9fb; border: 1px solid #9bdde6; padding: 18px; border-radius: 8px; margin: 22px 0;">
+          <h3 style="color: #0D1B2A; margin: 0 0 8px;">Printable Admission Form</h3>
+          <p style="color: #343A40; margin: 0; line-height: 1.6;">
+            Your filled-out Application for Admission form is attached to this email. Open the attachment and print it for your records or for submission when requested by the Registrar's Office.
+          </p>
+        </div>
+      `
+      : "";
 
     if (isMarineCourse(course)) {
       return {
         subject: "Letter of Acceptance - Exact Colleges of Asia",
+        attachments: printableAttachment ? [printableAttachment] : [],
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #d1d5db; color: #111827;">
             <div style="padding: 24px 32px 18px; text-align: center; border-bottom: 2px solid #2f67b1;">
@@ -402,6 +431,8 @@ const emailTemplates = {
                 Again, congratulations and welcome to the Exactian Family!
               </p>
 
+              ${printableNotice}
+
               <p style="font-size: 15px; line-height: 1.6; margin: 0; font-weight: 700;">
                 -Dr. Ferdinand G. Marcos (Sgd)<br/>
                 School President
@@ -414,6 +445,7 @@ const emailTemplates = {
 
     return {
       subject: "Letter of Acceptance - Exact Colleges of Asia",
+      attachments: printableAttachment ? [printableAttachment] : [],
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #d1d5db; color: #111827;">
           <div style="padding: 24px 32px 18px; text-align: center; border-bottom: 1px solid #d1d5db;">
@@ -462,6 +494,8 @@ const emailTemplates = {
               Again, Congratulations and Welcome to the Exactian Family!
             </p>
 
+            ${printableNotice}
+
             <p style="font-size: 15px; line-height: 1.6; margin: 0; font-weight: 700;">
               -Dr. Ferdinand G. Marcos (Sgd)<br/>
               School President
@@ -491,12 +525,18 @@ const sendEmail = async (to, template, data) => {
     console.log(`📧 Sending email via SMTP to: ${to}`);
     console.log(`📧 Subject: ${emailTemplate.subject}`);
 
-    const result = await transporter.sendMail({
+    const mailOptions = {
       from: EMAIL_FROM || EMAIL_USER,
       to,
       subject: emailTemplate.subject,
       html: emailTemplate.html,
-    });
+    };
+
+    if (emailTemplate.attachments?.length) {
+      mailOptions.attachments = emailTemplate.attachments;
+    }
+
+    const result = await transporter.sendMail(mailOptions);
 
     console.log("📧 SMTP Response:", JSON.stringify(result, null, 2));
     console.log("✅ Email sent successfully via SMTP");
