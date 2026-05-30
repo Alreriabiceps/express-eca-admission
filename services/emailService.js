@@ -3,7 +3,7 @@ const {
   getRequirementNamesForCourse,
   isMarineCourse,
 } = require("./requirementService");
-const { buildAdmissionFormHtml } = require("./admissionFormPrintService");
+const { buildAdmissionFormDocx } = require("./admissionFormDocService");
 
 const {
   EMAIL_SERVICE,
@@ -39,20 +39,25 @@ if (EMAIL_USER && EMAIL_PASS) {
 
 const transporter = nodemailer.createTransport(transporterOptions);
 
-const getPrintableAdmissionFormAttachment = (application) => {
+const getPrintableAdmissionFormAttachment = async (application) => {
   if (!application) return null;
 
-  const printableHtml = buildAdmissionFormHtml(application, {
-    autoPrint: false,
-    includeToolbar: true,
-  });
-  const applicationId = application._id ? String(application._id) : "application";
+  try {
+    const docxBuffer = await buildAdmissionFormDocx(application);
+    const applicationId = application._id
+      ? String(application._id)
+      : "application";
 
-  return {
-    filename: `admission-form-${applicationId}.html`,
-    content: printableHtml,
-    contentType: "text/html; charset=utf-8",
-  };
+    return {
+      filename: `admission-form-${applicationId}.docx`,
+      content: docxBuffer,
+      contentType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    };
+  } catch (error) {
+    console.error("Failed to generate admission form DOCX attachment:", error);
+    return null;
+  }
 };
 
 // Email templates (keeping all existing templates intact)
@@ -360,15 +365,17 @@ const emailTemplates = {
       </div>
     `,
   }),
-  applicationVerified: (studentName, course, application) => {
+  applicationVerified: async (studentName, course, application) => {
     const requirementItems = getRequirementNamesForCourse(course);
-    const printableAttachment = getPrintableAdmissionFormAttachment(application);
+    const printableAttachment = await getPrintableAdmissionFormAttachment(
+      application
+    );
     const printableNotice = printableAttachment
       ? `
         <div style="background: #eef9fb; border: 1px solid #9bdde6; padding: 18px; border-radius: 8px; margin: 22px 0;">
           <h3 style="color: #0D1B2A; margin: 0 0 8px;">Printable Admission Form</h3>
           <p style="color: #343A40; margin: 0; line-height: 1.6;">
-            Your filled-out Application for Admission form is attached to this email. Open the attachment and print it for your records or for submission when requested by the Registrar's Office.
+            Your filled-out Application for Admission form is attached as a Word document (.docx). Open the attachment in Microsoft Word, Google Docs, or LibreOffice, then print it for your records or for submission when requested by the Registrar's Office.
           </p>
         </div>
       `
@@ -511,7 +518,7 @@ const emailTemplates = {
 // Send email function using SMTP
 const sendEmail = async (to, template, data) => {
   try {
-    const emailTemplate = emailTemplates[template](...data);
+    const emailTemplate = await emailTemplates[template](...data);
 
     if (!EMAIL_USER || !EMAIL_PASS) {
       console.error("❌ EMAIL_USER or EMAIL_PASS not configured in .env");
